@@ -6,58 +6,90 @@ const TUNING = [64, 59, 55, 50, 45, 40];
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
 export type FretPosition = { stringIndex: number; fret: number };
+export type GameMode = 'WINDOW' | 'OCTAVE'; // New Type
 
-// Helper to generate round data (Pure logic extracted from component state)
-const createRoundData = (count: number) => {
+// Helper to convert MIDI to Name (e.g., 40 -> E2)
+export const getNoteName = (midi: number) => {
+  const note = NOTE_NAMES[midi % 12];
+  const octave = Math.floor(midi / 12) - 1; // MIDI 60 is C4
+  return { note, octave };
+};
+
+// Helper to generate round data
+const createRoundData = (count: number, mode: GameMode) => {
   const newNotes = new Set<number>();
   const safeCount = Math.min(count, 12);
-
+  
   while (newNotes.size < safeCount) {
-    newNotes.add(Math.floor(Math.random() * 12));
+    if (mode === 'WINDOW') {
+      // 0-11 (Pitch Class only)
+      newNotes.add(Math.floor(Math.random() * 12));
+    } else {
+      // OCTAVE MODE: Pick a specific note that exists on the 15-fret board
+      // Strategy: Pick a random string & fret, then use that pitch
+      const s = Math.floor(Math.random() * 6);
+      const f = Math.floor(Math.random() * 15);
+      const pitch = TUNING[s] + f;
+      newNotes.add(pitch);
+    }
   }
-
-  // Anchor between 3 and 11
+  
+  // Anchor between 3 and 11 (Only matters for Window mode)
   const newAnchor = Math.floor(Math.random() * (11 - 3 + 1)) + 3;
 
-  // New: Generate shuffled color indices (assuming palette size of 6)
-  // We generate a simple array [0,1,2,3,4,5] and shuffle it
+  // Shuffle colors
   const colorIndices = [0, 1, 2, 3, 4, 5].sort(() => Math.random() - 0.5);
 
   return {
     notes: Array.from(newNotes).sort((a, b) => a - b),
     anchor: newAnchor,
-    colorIndices // Return the shuffled colors
+    colorIndices
   };
 };
 
 export const useFretboardGame = (initialCount: number = 1) => {
+  const [gameMode, setGameMode] = useState<GameMode>('WINDOW');
   const [noteCount, setNoteCountState] = useState<number>(initialCount);
-
-  // Lazy initialization for the first round
-  const [roundData, setRoundData] = useState(() => createRoundData(initialCount));
-
+  
+  // Initialize
+  const [roundData, setRoundData] = useState(() => createRoundData(initialCount, 'WINDOW'));
+  
   const [clickedFrets, setClickedFrets] = useState<FretPosition[]>([]);
   const [gameState, setGameState] = useState<'GUESSING' | 'REVEALED'>('GUESSING');
   const [streak, setStreak] = useState(0);
 
-  // Destructure round data
   const { notes: targetNotes, anchor: anchorFret, colorIndices } = roundData;
 
-  // The 7-fret window: Anchor +/- 3
-  const windowStart = Math.max(0, anchorFret - 3);
-  const windowEnd = Math.min(14, anchorFret + 3);
+  // --- LOGIC SPLIT ---
+  // Window Mode: Constrained to Anchor +/- 3
+  // Octave Mode: Full Board (0-14)
+  const windowStart = gameMode === 'WINDOW' ? Math.max(0, anchorFret - 3) : 0;
+  const windowEnd   = gameMode === 'WINDOW' ? Math.min(14, anchorFret + 3) : 14;
 
   const generateNewRound = useCallback(() => {
-    setRoundData(createRoundData(noteCount));
+    setRoundData(createRoundData(noteCount, gameMode)); // Pass current mode
     setClickedFrets([]);
     setGameState('GUESSING');
-  }, [noteCount]);
+  }, [noteCount, gameMode]);
+
+  const toggleMode = () => {
+    setGameMode(prev => {
+      const newMode = prev === 'WINDOW' ? 'OCTAVE' : 'WINDOW';
+      // Reset streak on mode switch as difficulty changes
+      setStreak(0);
+      // We need to trigger a new round immediately with the NEW mode
+      setRoundData(createRoundData(noteCount, newMode)); 
+      setClickedFrets([]);
+      setGameState('GUESSING');
+      return newMode;
+    });
+  };
 
   const updateNoteCount = (delta: number) => {
     setNoteCountState(prev => {
       const newCount = Math.max(1, Math.min(4, prev + delta));
       if (newCount !== prev) {
-        setRoundData(createRoundData(newCount));
+        setRoundData(createRoundData(newCount, gameMode));
         setClickedFrets([]);
         setGameState('GUESSING');
       }
@@ -82,7 +114,17 @@ export const useFretboardGame = (initialCount: number = 1) => {
     for (let s = 0; s < 6; s++) {
       for (let f = windowStart; f <= windowEnd; f++) {
         const pitch = TUNING[s] + f;
-        if (targetNotes.includes(pitch % 12)) {
+        
+        let isMatch = false;
+        if (gameMode === 'WINDOW') {
+          // Check Pitch Class (e.g., any C)
+          isMatch = targetNotes.includes(pitch % 12);
+        } else {
+          // Check Exact MIDI (e.g., C3 only)
+          isMatch = targetNotes.includes(pitch);
+        }
+
+        if (isMatch) {
           correctPositions.push({ stringIndex: s, fret: f });
         }
       }
@@ -105,11 +147,12 @@ export const useFretboardGame = (initialCount: number = 1) => {
   };
 
   return {
-    targetNoteIndices: targetNotes,
-    targetNoteNames: targetNotes.map(n => NOTE_NAMES[n]),
-    colorIndices, // Export the shuffled indices
+    targetNotes, // Raw numbers (0-11 or MIDI)
+    colorIndices,
     noteCount,
     updateNoteCount,
+    gameMode,
+    toggleMode,
     anchorFret,
     windowStart,
     windowEnd,

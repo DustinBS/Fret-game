@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+/* Optional: Dark mode background for the whole body */
+body {
+  @apply bg-slate-900 text-white;
+}

@@ -1,5 +1,7 @@
 # Fretboard Game
 
+https://dustinbs.github.io/Fret-game/
+
 **Goal:** Webapp to gamify learning the fretboard
 **Stack:** React, TypeScript, Tailwind CSS
 

@@ -2,15 +2,6 @@
 
 https://dustinbs.github.io/Fret-game/
 
-**Goal:** Webapp to gamify learning the fretboard
-**Stack:** React, TypeScript, Tailwind CSS
-
-Here is the updated **Contributor Guide**. I have rewritten the "Game Concept" to prioritize the multi-modal nature of the app (specifically highlighting Octave Mode) and adjusted the rest of the document to match the current state of the codebase.
-
------
-
-# Fretboard Focus - Contributor Guide
-
 **Goal:** A webapp to gamify sight-reading and fretboard visualization.
 
 **Stack:** React, TypeScript, Tailwind CSS, VexFlow (Music Notation)

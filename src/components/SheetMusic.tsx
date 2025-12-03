@@ -1,98 +1,99 @@
+// src/components/SheetMusic.tsx
 import React, { useEffect, useRef } from 'react';
 import { Renderer, Stave, StaveNote, Accidental, Formatter, Voice } from 'vexflow';
 
 interface SheetMusicProps {
-  noteValue: number; // 0-11 (Window) or MIDI (Octave)
+  notes: number[];
+  colors: string[];
   gameMode: 'WINDOW' | 'OCTAVE';
-  width?: number;
-  height?: number;
+  useFlats: boolean;
 }
 
-const SheetMusic: React.FC<SheetMusicProps> = ({ 
-  noteValue, 
-  gameMode, 
-  width = 100, 
-  height = 120 
+const SheetMusic: React.FC<SheetMusicProps> = ({
+  notes,
+  colors,
+  gameMode,
+  useFlats
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // 1. Clear previous render
     containerRef.current.innerHTML = '';
 
-    // 2. Setup VexFlow Factory
-    // In VexFlow 4+, we import Renderer directly. 
-    // Renderer.Backends.SVG is the standard way to access the backend enum.
+    const WIDTH = 200;
+    const HEIGHT = 140;
+
     const renderer = new Renderer(containerRef.current, Renderer.Backends.SVG);
-    
-    renderer.resize(width, height);
+    renderer.resize(WIDTH, HEIGHT);
     const context = renderer.getContext();
 
-    // 3. Create Stave (Treble Clef 8vb for Guitar)
-    // We position it to center the note
-    const stave = new Stave(0, 0, width);
-    
-    // Add Treble Clef with "8vb" annotation (Standard Classical Guitar Notation)
+    const stave = new Stave(10, 0, WIDTH - 20);
     stave.addClef('treble', 'default', '8vb');
     stave.setContext(context).draw();
 
-    // 4. Calculate Key for VexFlow
-    // Guitar Logic: 
-    // Sounding Middle C (MIDI 60 on Piano) is 3rd string, 5th fret.
-    // In notation, Guitar is transposing. Sounding 60 is Written 72 (C5).
-    // Guitar sounding Low E (MIDI 40) is written as E below staff (approx MIDI 52 relative to piano staff).
-    // Standard VexFlow Treble Clef treats "c/4" as Middle C (MIDI 60).
-    // To write Guitar Low E (Sounding 40), we need to write it as E3 ("e/3").
-    // Formula: Written Note = Sounding MIDI Note + 12 semitones (1 Octave)
-    
-    let renderMidi = noteValue;
-
-    if (gameMode === 'WINDOW') {
-      // Input is 0-11 (Pitch Class)
-      // We want to display it in a readable range on the staff.
-      // Let's map it to the octave starting at Middle C (Sounding C3 / Written C4)
-      // Sounding C3 = MIDI 48. Written C4 = MIDI 60.
-      // So Base is 60.
-      renderMidi = 60 + noteValue; 
-    } else {
-        // Input is Actual Sounding MIDI (e.g. 40 for Low E)
-        // We must transpose +12 for Written Notation
-        renderMidi = noteValue + 12;
+    interface NoteData {
+      key: string;
+      accidental: string | null;
+      color: string;
+      rawVal: number;
     }
 
-    // Convert MIDI to VexFlow Key String (e.g., 61 -> "c#/4")
-    const noteNames = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b'];
-    const octave = Math.floor(renderMidi / 12) - 1; // VexFlow: C4 is Middle C
-    const semitone = renderMidi % 12;
-    const noteName = noteNames[semitone];
-    
-    // Check for accidental (Sharp)
-    const hasSharp = noteName.includes('#');
-    const cleanKey = `${noteName[0]}/${octave}`; // e.g. "c/4"
+    const noteDataList: NoteData[] = notes.map((val, i) => {
+      let renderMidi = val;
+      if (gameMode === 'WINDOW') renderMidi = 60 + val;
+      else renderMidi = val + 12;
 
-    // 5. Create Voice and Note
-    const note = new StaveNote({
-      keys: [cleanKey],
-      duration: "w", // Whole note
-      // align_center is sometimes used but Formatter handles it best
+      const octave = Math.floor(renderMidi / 12) - 1;
+      const semitone = renderMidi % 12;
+
+      let noteLetter = '';
+      let accidental = null;
+
+      if (useFlats) {
+         const flatNames = ['c', 'd', 'd', 'e', 'e', 'f', 'g', 'g', 'a', 'a', 'b', 'b'];
+         const isFlat = [1, 3, 6, 8, 10].includes(semitone);
+         noteLetter = flatNames[semitone];
+         if (isFlat) accidental = 'b';
+      } else {
+         const sharpNames = ['c', 'c', 'd', 'd', 'e', 'f', 'f', 'g', 'g', 'a', 'a', 'b'];
+         const isSharp = [1, 3, 6, 8, 10].includes(semitone);
+         noteLetter = sharpNames[semitone];
+         if (isSharp) accidental = '#';
+      }
+
+      const key = `${noteLetter}/${octave}`;
+
+      return {
+        key,
+        accidental,
+        color: colors[i % colors.length],
+        rawVal: renderMidi
+      };
     });
 
-    if (hasSharp) {
-      note.addModifier(new Accidental("#"));
-    }
+    noteDataList.sort((a, b) => a.rawVal - b.rawVal);
 
-    // 6. Format and Draw
+    const staveNote = new StaveNote({
+      keys: noteDataList.map(n => n.key),
+      duration: "w",
+      autoStem: true,
+    });
+
+    noteDataList.forEach((data, index) => {
+      if (data.accidental) {
+        staveNote.addModifier(new Accidental(data.accidental), index);
+      }
+      staveNote.setKeyStyle(index, { fillStyle: data.color, strokeStyle: data.color });
+    });
+
     const voice = new Voice({ numBeats: 4, beatValue: 4 });
-    voice.addTickables([note]);
-
-    // Format the voice to fit within the stave width (minus padding)
-    new Formatter().joinVoices([voice]).format([voice], width - 50);
-
+    voice.addTickables([staveNote]);
+    new Formatter().joinVoices([voice]).format([voice], WIDTH - 50);
     voice.draw(context, stave);
 
-  }, [noteValue, gameMode, width, height]);
+  }, [notes, colors, gameMode, useFlats]);
 
   return <div ref={containerRef} className="inline-block" />;
 };

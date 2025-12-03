@@ -1,6 +1,7 @@
 // src/components/FretboardGame.tsx
 import React from 'react';
 import { useFretboardGame, getNoteName } from '../hooks/useFretboardGame';
+import SheetMusic from './SheetMusic';
 
 const SAFE_PALETTE = [
   { name: 'Blue',   bg: 'bg-blue-600',   text: 'text-blue-600',   border: 'border-blue-800' },
@@ -19,6 +20,10 @@ const FretboardGame: React.FC = () => {
     updateNoteCount,
     gameMode,
     toggleMode,
+    isSheetMode,
+    setIsSheetMode,
+    isHiddenMode,
+    setIsHiddenMode,
     anchorFret,
     windowStart,
     windowEnd,
@@ -37,7 +42,7 @@ const FretboardGame: React.FC = () => {
     <div className="flex flex-col items-center p-8 min-h-screen bg-white text-slate-900 w-full font-sans select-none">
 
       {/* HEADER HUD */}
-      <div className="mb-8 w-full max-w-[1000px] flex flex-col md:flex-row justify-between items-end border-b-2 border-slate-900 pb-4">
+      <div className="mb-8 w-full max-w-[1000px] flex flex-col xl:flex-row justify-between items-end border-b-2 border-slate-900 pb-4 gap-4">
 
         {/* LEFT: Controls & Title */}
         <div className="flex flex-col gap-4">
@@ -45,13 +50,12 @@ const FretboardGame: React.FC = () => {
             <h1 className="text-3xl font-black tracking-tighter uppercase">
               Fretboard<span className="text-slate-400">Focus</span>
             </h1>
-            {/* MODE BADGE */}
             <span className={`text-xs font-bold px-2 py-1 rounded text-white ${gameMode === 'WINDOW' ? 'bg-slate-800' : 'bg-indigo-600'}`}>
               {gameMode === 'WINDOW' ? 'POSITION MODE' : 'OCTAVE MODE'}
             </span>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center gap-6">
              {/* TARGET STEPPER */}
              <div className="flex items-center gap-3">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Targets:</span>
@@ -62,12 +66,33 @@ const FretboardGame: React.FC = () => {
                 </div>
              </div>
 
-             {/* MODE TOGGLE BUTTON */}
+             {/* MODE TOGGLES */}
+             <div className="flex items-center gap-4 text-xs font-bold uppercase tracking-wider">
+                <label className="flex items-center gap-2 cursor-pointer hover:text-blue-600">
+                    <input
+                        type="checkbox"
+                        checked={isSheetMode}
+                        onChange={(e) => setIsSheetMode(e.target.checked)}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    Sheet Music
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer hover:text-blue-600">
+                    <input
+                        type="checkbox"
+                        checked={isHiddenMode}
+                        onChange={(e) => setIsHiddenMode(e.target.checked)}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    Hide Guesses
+                </label>
+             </div>
+
              <button
                onClick={toggleMode}
                className="text-xs font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 underline decoration-2 underline-offset-2"
              >
-               Go to {gameMode === 'WINDOW' ? 'Octave' : 'Position'} Mode
+               Switch to {gameMode === 'WINDOW' ? 'Octave' : 'Position'} Mode
              </button>
           </div>
         </div>
@@ -75,37 +100,39 @@ const FretboardGame: React.FC = () => {
         {/* CENTER: Target Notes Display */}
         <div className="flex flex-col items-center flex-grow px-4">
            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Find All</p>
-           <div className="flex items-baseline">
+           <div className="flex items-baseline flex-wrap justify-center gap-4">
              {targetNotes.map((val, idx) => {
                 const colorIndex = colorIndices[idx % colorIndices.length];
                 const color = SAFE_PALETTE[colorIndex];
-
-                // Convert value to name (Handles both 0-11 and MIDI)
                 const { note, octave } = getNoteName(val);
 
                 return (
-                  <React.Fragment key={idx}>
-                    <div className="flex items-center gap-1">
-                      <div className={`w-3 h-3 rounded-full ${color.bg}`} />
-                      <span className={`text-6xl font-black ${color.text} flex items-baseline`}>
-                        {note}
-                        {/* Show Octave Subscript ONLY in Octave Mode */}
-                        {gameMode === 'OCTAVE' && (
-                          <span className="text-3xl font-bold ml-1 opacity-80">{octave}</span>
-                        )}
-                      </span>
-                    </div>
-                    {idx < targetNotes.length - 1 && (
-                      <span className="text-4xl text-slate-300 font-light mx-3 -translate-y-2">,</span>
+                  <div key={idx} className="flex flex-col items-center relative">
+                    {/* Visual Dot Indicator */}
+                    <div className={`w-3 h-3 rounded-full mb-1 ${color.bg}`} />
+
+                    {isSheetMode ? (
+                        /* VEXFLOW RENDERER */
+                        <div className="scale-75 origin-top -mb-4">
+                          <SheetMusic noteValue={val} gameMode={gameMode} />
+                        </div>
+                    ) : (
+                        /* TEXT RENDERER */
+                        <span className={`text-6xl font-black ${color.text} flex items-baseline`}>
+                            {note}
+                            {gameMode === 'OCTAVE' && (
+                            <span className="text-3xl font-bold ml-1 opacity-80">{octave}</span>
+                            )}
+                        </span>
                     )}
-                  </React.Fragment>
+                  </div>
                 );
              })}
            </div>
         </div>
 
         {/* RIGHT: Streak */}
-        <div className="text-right">
+        <div className="text-right whitespace-nowrap">
            <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Streak</div>
            <div className={`text-4xl font-mono font-bold ${streak > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>
              {streak}
@@ -114,14 +141,13 @@ const FretboardGame: React.FC = () => {
       </div>
 
       {/* FRETBOARD CONTAINER */}
-      <div className="relative w-full max-w-[1000px] overflow-x-auto pb-4">
+      <div className="relative w-full max-w-[1000px] overflow-x-auto pb-4 custom-scrollbar">
 
         {/* Fret Numbers */}
         <div className="flex pl-10 mb-1 min-w-[800px]">
           {Array.from({ length: 15 }).map((_, i) => (
             <div
               key={i}
-              // Only highlight anchor in WINDOW mode
               className={`flex-1 text-center text-xs font-mono transition-colors duration-300
                 ${gameMode === 'WINDOW' && i === anchorFret ? 'text-red-600 font-bold' : 'text-slate-400'}`}
             >
@@ -174,7 +200,6 @@ const FretboardGame: React.FC = () => {
                   {Array.from({ length: 15 }).map((_, fret) => {
                     const isActiveWindow = fret >= windowStart && fret <= windowEnd;
                     const isClicked = clickedFrets.some(c => c.stringIndex === sIdx && c.fret === fret);
-                    // Only show Red Anchor in WINDOW mode
                     const isAnchorPos = gameMode === 'WINDOW' && sIdx === 0 && fret === anchorFret;
 
                     const pitch = TUNING[sIdx] + fret;
@@ -184,12 +209,10 @@ const FretboardGame: React.FC = () => {
                     let colorIndex = 0;
 
                     if (gameMode === 'WINDOW') {
-                        // Match Pitch Class (0-11)
                         const targetIdx = targetNotes.indexOf(pitch % 12);
                         isTarget = targetIdx !== -1;
                         if (isTarget) colorIndex = colorIndices[targetIdx % colorIndices.length];
                     } else {
-                        // Match Exact MIDI
                         const targetIdx = targetNotes.indexOf(pitch);
                         isTarget = targetIdx !== -1;
                         if (isTarget) colorIndex = colorIndices[targetIdx % colorIndices.length];
@@ -197,13 +220,31 @@ const FretboardGame: React.FC = () => {
 
                     const colorTheme = isTarget ? SAFE_PALETTE[colorIndex] : null;
 
+                    // --- VISUAL STATE LOGIC ---
                     let markerClass = "scale-0";
+
                     if (gameState === 'GUESSING') {
-                      if (isClicked) markerClass = "scale-100 bg-amber-400 border-2 border-slate-900 shadow-sm";
+                        if (isClicked) {
+                            if (isHiddenMode) {
+                                // INVISIBLE MODE: Scale 0 means it takes space but is invisible
+                                markerClass = "scale-0";
+                            } else {
+                                // STANDARD MODE: Show selection immediately
+                                markerClass = "scale-100 bg-amber-400 border-2 border-slate-900 shadow-sm";
+                            }
+                        }
                     } else {
-                      if (isTarget && isClicked) markerClass = `scale-100 ${colorTheme?.bg} border-2 ${colorTheme?.border} shadow-md`;
-                      else if (isTarget && !isClicked && isActiveWindow) markerClass = `scale-75 ${colorTheme?.bg} opacity-50`;
-                      else if (!isTarget && isClicked) markerClass = "scale-75 bg-slate-700 border-2 border-slate-900";
+                        // REVEALED
+                        if (isTarget && isClicked) {
+                             markerClass = `scale-100 ${colorTheme?.bg} border-2 ${colorTheme?.border} shadow-md`;
+                        }
+                        else if (isTarget && !isClicked && isActiveWindow) {
+                             markerClass = `scale-75 ${colorTheme?.bg} opacity-50`;
+                        }
+                        else if (!isTarget && isClicked) {
+                             // False Positive
+                             markerClass = "scale-75 bg-slate-700 border-2 border-slate-900";
+                        }
                     }
 
                     return (
@@ -218,7 +259,8 @@ const FretboardGame: React.FC = () => {
                          {isAnchorPos && (
                            <div className="absolute w-3 h-3 bg-red-600 rounded-sm z-0 opacity-80" />
                          )}
-                         <div className={`w-6 h-6 rounded-full transition-all duration-200 z-10 ${markerClass}`} />
+                         <div className={`w-6 h-6 rounded-full transition-all duration-200 z-10 flex items-center justify-center ${markerClass}`}>
+                         </div>
                       </div>
                     );
                   })}

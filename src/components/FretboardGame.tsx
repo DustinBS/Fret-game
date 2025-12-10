@@ -35,9 +35,10 @@ const FretboardGame: React.FC = () => {
     streak,
     handleFretClick,
     submitGuess,
+    clearGuesses, // IMPORTED
     generateNewRound,
     TUNING
-  } = useFretboardGame(2);
+  } = useFretboardGame(3); // CHANGED: Default to 3 notes
 
   const STRING_THICKNESS = [1, 2, 3, 4, 5, 6];
 
@@ -92,6 +93,14 @@ const FretboardGame: React.FC = () => {
 
             {/* Actions / Modes */}
             <div className="flex flex-col gap-3 pt-2 border-t border-slate-200">
+
+                <button
+                    onClick={clearGuesses}
+                    className="text-left text-xs font-bold text-red-600 hover:text-red-800 hover:bg-red-50 py-2 px-3 -mx-3 rounded transition-colors uppercase tracking-wider flex items-center justify-between group"
+                >
+                    <span>Clear Selection</span>
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity">×</span>
+                </button>
 
                 <button
                     onClick={toggleGameMode}

@@ -80,16 +80,17 @@ const createRoundData = (count: number, gameMode: GameMode, accidentalMode: Acci
 };
 
 export const useFretboardGame = (initialCount: number = 1) => {
-  const [gameMode, setGameMode] = useState<GameMode>('WINDOW');
+  // CHANGED: Default to 'OCTAVE'
+  const [gameMode, setGameMode] = useState<GameMode>('OCTAVE');
   const [accidentalMode, setAccidentalMode] = useState<AccidentalMode>('SHARP');
   const [noteCount, setNoteCountState] = useState<number>(initialCount);
 
-  // Toggles
-  const [isSheetMode, setIsSheetMode] = useState(false);
+  // CHANGED: Default isSheetMode to true
+  const [isSheetMode, setIsSheetMode] = useState(true);
   const [isHiddenMode, setIsHiddenMode] = useState(false);
 
-  // Initialize
-  const [roundData, setRoundData] = useState(() => createRoundData(initialCount, 'WINDOW', 'SHARP'));
+  // CHANGED: Initialize roundData with 'OCTAVE' to match gameMode state
+  const [roundData, setRoundData] = useState(() => createRoundData(initialCount, 'OCTAVE', 'SHARP'));
 
   const [clickedFrets, setClickedFrets] = useState<FretPosition[]>([]);
   const [gameState, setGameState] = useState<'GUESSING' | 'REVEALED'>('GUESSING');
@@ -155,6 +156,13 @@ export const useFretboardGame = (initialCount: number = 1) => {
     });
   };
 
+  // ADDED: Helper to clear selections
+  const clearGuesses = () => {
+    if (gameState === 'GUESSING') {
+      setClickedFrets([]);
+    }
+  };
+
   const submitGuess = () => {
     const correctPositions: FretPosition[] = [];
 
@@ -191,7 +199,7 @@ export const useFretboardGame = (initialCount: number = 1) => {
   return {
     targetNotes,
     colorIndices,
-    roundUseFlats, // Expose the resolved accidental preference
+    roundUseFlats,
     noteCount,
     updateNoteCount,
     gameMode,
@@ -209,6 +217,7 @@ export const useFretboardGame = (initialCount: number = 1) => {
     gameState,
     streak,
     handleFretClick,
+    clearGuesses, // EXPORTED
     submitGuess,
     generateNewRound,
     TUNING

@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "FretFocus",
+    "slug": "fret-focus",
+    "version": "1.0.0",
+    "orientation": "landscape",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": ["**/*"],
+    "ios": { "supportsTablet": true },
+    "android": { "package": "com.dustinbs.fretfocus" },
+    "plugins": ["expo-font"]
+  }
+}

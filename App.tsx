@@ -1,5 +1,5 @@
 // src/App.tsx
-import FretboardGame from './components/FretboardGame';
+import FretboardGame from './src/components/FretboardGame';
 
 function App() {
   return (

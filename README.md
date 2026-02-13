@@ -1,3 +1,7 @@
+TODO
+- Add chord recognition for most common chords. Main challenge is identifying what common chords are that are useful to memorize (if any)
+- https://www.youtube.com/watch?v=s0IBmISlXOQ
+
 # Fretboard Game
 
 https://dustinbs.github.io/Fret-game/

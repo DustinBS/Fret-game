@@ -37,6 +37,7 @@ const FretboardGame: React.FC = () => {
     submitGuess,
     clearGuesses, // IMPORTED
     generateNewRound,
+    targetChord,
     TUNING
   } = useFretboardGame(3); // CHANGED: Default to 3 notes
 
@@ -46,6 +47,13 @@ const FretboardGame: React.FC = () => {
     const colorIdx = colorIndices[idx % colorIndices.length];
     return SAFE_PALETTE[colorIdx].hex;
   });
+
+  const getGameModeName = (mode: string) => {
+    if (mode === 'WINDOW') return 'Position';
+    if (mode === 'OCTAVE') return 'Octave';
+    if (mode === 'CHORD') return 'Chord';
+    return '';
+  }
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-white text-slate-900 font-sans select-none">
@@ -87,7 +95,7 @@ const FretboardGame: React.FC = () => {
 
             {/* Toggles */}
             <div className="space-y-3 pt-2 border-t border-slate-200">
-                <ToggleRow label="Sheet Music" checked={isSheetMode} onChange={setIsSheetMode} />
+                <ToggleRow label="Sheet Music" checked={isSheetMode} onChange={setIsSheetMode} disabled={gameMode === 'CHORD'} />
                 <ToggleRow label="Hide Guesses" checked={isHiddenMode} onChange={setIsHiddenMode} />
             </div>
 
@@ -106,7 +114,11 @@ const FretboardGame: React.FC = () => {
                     onClick={toggleGameMode}
                     className="text-left text-xs font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-50 py-2 px-3 -mx-3 rounded transition-colors uppercase tracking-wider flex items-center justify-between group"
                 >
-                    <span>Switch to {gameMode === 'WINDOW' ? 'Octave' : 'Position'} Mode</span>
+                    <span>Switch to {
+                      gameMode === 'WINDOW' ? getGameModeName('OCTAVE') :
+                      gameMode === 'OCTAVE' ? getGameModeName('CHORD') :
+                      getGameModeName('WINDOW')
+                    } Mode</span>
                     <span className="opacity-0 group-hover:opacity-100 transition-opacity">→</span>
                 </button>
 
@@ -129,7 +141,7 @@ const FretboardGame: React.FC = () => {
         <div className="flex flex-col items-center min-h-40 justify-center w-full">
            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Find All</p>
 
-           {isSheetMode ? (
+           {isSheetMode && gameMode !== 'CHORD' ? (
               <div className="flex justify-center scale-110 lg:scale-125 origin-center">
                  <SheetMusic
                    notes={targetNotes}
@@ -140,23 +152,31 @@ const FretboardGame: React.FC = () => {
               </div>
            ) : (
               <div className="flex items-baseline flex-wrap justify-center gap-8">
-                {targetNotes.map((val, idx) => {
-                    const colorIndex = colorIndices[idx % colorIndices.length];
-                    const color = SAFE_PALETTE[colorIndex];
-                    const { note, octave } = getNoteName(val, roundUseFlats);
+                {gameMode === 'CHORD' ? (
+                  <div className="flex flex-col items-center relative">
+                    <span className="text-7xl font-black text-slate-900 flex items-baseline">
+                      {targetChord}
+                    </span>
+                  </div>
+                ) : (
+                  targetNotes.map((val, idx) => {
+                      const colorIndex = colorIndices[idx % colorIndices.length];
+                      const color = SAFE_PALETTE[colorIndex];
+                      const { note, octave } = getNoteName(val, roundUseFlats);
 
-                    return (
-                      <div key={idx} className="flex flex-col items-center relative">
-                        <div className={`w-3 h-3 rounded-full mb-3 ${color.bg}`} />
-                        <span className={`text-7xl font-black ${color.text} flex items-baseline`}>
-                            {note}
-                            {gameMode === 'OCTAVE' && (
-                                <span className="text-4xl font-bold ml-1 opacity-60">{octave}</span>
-                            )}
-                        </span>
-                      </div>
-                    );
-                })}
+                      return (
+                        <div key={idx} className="flex flex-col items-center relative">
+                          <div className={`w-3 h-3 rounded-full mb-3 ${color.bg}`} />
+                          <span className={`text-7xl font-black ${color.text} flex items-baseline`}>
+                              {note}
+                              {gameMode === 'OCTAVE' && (
+                                  <span className="text-4xl font-bold ml-1 opacity-60">{octave}</span>
+                              )}
+                          </span>
+                        </div>
+                      );
+                  })
+                )}
               </div>
            )}
         </div>
@@ -213,7 +233,7 @@ const FretboardGame: React.FC = () => {
                         let isTarget = false;
                         let colorIndex = 0;
 
-                        if (gameMode === 'WINDOW') {
+                        if (gameMode === 'WINDOW' || gameMode === 'CHORD') {
                             const targetIdx = targetNotes.indexOf(pitch % 12);
                             isTarget = targetIdx !== -1;
                             if (isTarget) colorIndex = colorIndices[targetIdx % colorIndices.length];
@@ -264,11 +284,11 @@ const FretboardGame: React.FC = () => {
   );
 };
 
-const ToggleRow = ({ label, checked, onChange }: { label: string, checked: boolean, onChange: (v: boolean) => void }) => (
-    <label className="flex items-center justify-between cursor-pointer group py-2">
+const ToggleRow = ({ label, checked, onChange, disabled }: { label: string, checked: boolean, onChange: (v: boolean) => void, disabled?: boolean }) => (
+    <label className={`flex items-center justify-between group py-2 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
         <span className="text-xs font-bold uppercase text-slate-500 group-hover:text-slate-800 transition-colors">{label}</span>
         <div className="relative">
-            <input type="checkbox" className="sr-only" checked={checked} onChange={e => onChange(e.target.checked)} />
+            <input type="checkbox" className="sr-only" checked={checked} onChange={e => onChange(e.target.checked)} disabled={disabled} />
             <div className={`w-10 h-6 rounded-full transition-colors ${checked ? 'bg-blue-600' : 'bg-slate-300'}`}></div>
             <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${checked ? 'translate-x-4' : 'translate-x-0'}`}></div>
         </div>

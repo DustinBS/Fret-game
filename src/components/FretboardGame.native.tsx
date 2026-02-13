@@ -19,7 +19,8 @@ const FretboardGame = () => {
     gameMode, toggleGameMode, accidentalMode, cycleAccidentalMode,
     isSheetMode, setIsSheetMode, isHiddenMode, setIsHiddenMode,
     anchorFret, windowStart, windowEnd, clickedFrets, gameState,
-    streak, handleFretClick, submitGuess, clearGuesses, generateNewRound, TUNING
+    streak, handleFretClick, submitGuess, clearGuesses, generateNewRound, TUNING,
+    targetChord,
   } = useFretboardGame(3);
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -30,6 +31,13 @@ const FretboardGame = () => {
     const colorIdx = colorIndices[idx % colorIndices.length];
     return SAFE_PALETTE[colorIdx].hex;
   });
+
+  const getGameModeName = (mode: string) => {
+    if (mode === 'WINDOW') return 'Position';
+    if (mode === 'OCTAVE') return 'Octave';
+    if (mode === 'CHORD') return 'Chord';
+    return '';
+  }
 
   return (
     <View className="flex-1 bg-white">
@@ -52,7 +60,7 @@ const FretboardGame = () => {
         {/* CENTER: Targets */}
         {/* pb-0 ensures no padding lifts the music up */}
         <View className="flex-1 items-center justify-end h-full pb-0">
-            {isSheetMode ? (
+            {isSheetMode && gameMode !== 'CHORD' ? (
                // SCALE + TRANSLATE:
                // scale-75 shrinks it.
                // translateY-15 pushes it down 15px to counteract the "lift" from scaling center.
@@ -64,15 +72,19 @@ const FretboardGame = () => {
                </View>
             ) : (
                <View className="flex-row gap-1 flex-wrap justify-center mb-4">
-                 {targetNotes.map((val, idx) => {
-                   const color = SAFE_PALETTE[colorIndices[idx % colorIndices.length]];
-                   const { note } = getNoteName(val, roundUseFlats);
-                   return (
-                     <View key={idx} className={`w-8 h-8 rounded-full ${color.bg} items-center justify-center shadow-sm`}>
-                        <Text className="text-white font-bold text-sm">{note}</Text>
-                     </View>
-                   );
-                 })}
+                {gameMode === 'CHORD' ? (
+                  <Text className="text-2xl font-black text-slate-900">{targetChord}</Text>
+                ) : (
+                  targetNotes.map((val, idx) => {
+                    const color = SAFE_PALETTE[colorIndices[idx % colorIndices.length]];
+                    const { note } = getNoteName(val, roundUseFlats);
+                    return (
+                      <View key={idx} className={`w-8 h-8 rounded-full ${color.bg} items-center justify-center shadow-sm`}>
+                          <Text className="text-white font-bold text-sm">{note}</Text>
+                      </View>
+                    );
+                  })
+                )}
                </View>
             )}
         </View>
@@ -115,7 +127,7 @@ const FretboardGame = () => {
 
                             let isTarget = false;
                             let colorIndex = 0;
-                            const noteVal = gameMode === 'WINDOW' ? pitch % 12 : pitch;
+                            const noteVal = gameMode === 'WINDOW' || gameMode === 'CHORD' ? pitch % 12 : pitch;
                             const targetIdx = targetNotes.indexOf(noteVal);
                             if (targetIdx !== -1) {
                                 isTarget = true;
@@ -193,12 +205,14 @@ const FretboardGame = () => {
                     </View>
                  </View>
 
-                 <ToggleRow label="Sheet Music Mode" checked={isSheetMode} onChange={setIsSheetMode} />
+                 <ToggleRow label="Sheet Music Mode" checked={isSheetMode} onChange={setIsSheetMode} disabled={gameMode === 'CHORD'} />
                  <ToggleRow label="Hide Guesses" checked={isHiddenMode} onChange={setIsHiddenMode} />
 
                  <Pressable onPress={toggleGameMode} className="bg-blue-50 p-4 rounded-lg flex-row justify-between">
                     <Text className="font-bold text-blue-800 uppercase">Game Mode</Text>
-                    <Text className="font-bold text-blue-600">{gameMode === 'WINDOW' ? 'Octave (Window)' : 'Position (Full)'}</Text>
+                    <Text className="font-bold text-blue-600">{
+                      getGameModeName(gameMode)
+                    }</Text>
                  </Pressable>
 
                  <Pressable onPress={cycleAccidentalMode} className="bg-blue-50 p-4 rounded-lg flex-row justify-between">
@@ -214,10 +228,10 @@ const FretboardGame = () => {
   );
 };
 
-const ToggleRow = ({ label, checked, onChange }: any) => (
-   <View className="flex-row justify-between items-center py-2">
+const ToggleRow = ({ label, checked, onChange, disabled }: any) => (
+   <View className={`flex-row justify-between items-center py-2 ${disabled ? 'opacity-50' : ''}`}>
       <Text className="font-bold text-slate-500 uppercase">{label}</Text>
-      <Pressable onPress={() => onChange(!checked)} className={`w-12 h-7 rounded-full justify-center px-1 ${checked ? 'bg-green-500' : 'bg-slate-300'}`}>
+      <Pressable onPress={() => !disabled && onChange(!checked)} className={`w-12 h-7 rounded-full justify-center px-1 ${checked ? 'bg-green-500' : 'bg-slate-300'}`}>
          <View className={`w-5 h-5 bg-white rounded-full shadow-sm ${checked ? 'self-end' : 'self-start'}`} />
       </Pressable>
    </View>

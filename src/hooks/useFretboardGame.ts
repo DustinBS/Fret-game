@@ -19,7 +19,7 @@ const getLetterIndices = (isFlat: boolean) => {
 };
 
 export type FretPosition = { stringIndex: number; fret: number };
-export type GameMode = 'WINDOW' | 'OCTAVE';
+export type GameMode = 'WINDOW' | 'OCTAVE' | 'CHORD';
 export type AccidentalMode = 'SHARP' | 'FLAT' | 'BOTH';
 
 // Helper now takes the *resolved* mode for the round
@@ -30,9 +30,20 @@ export const getNoteName = (midi: number, isFlat: boolean) => {
   return { note, octave };
 };
 
+const CHORDS = {
+  'Major': [0, 4, 7],
+  'Minor': [0, 3, 7],
+  'Diminished': [0, 3, 6],
+  'Augmented': [0, 4, 8],
+  'Major 7th': [0, 4, 7, 11],
+  'Minor 7th': [0, 3, 7, 10],
+  'Dominant 7th': [0, 4, 7, 10],
+};
+
 const createRoundData = (count: number, gameMode: GameMode, accidentalMode: AccidentalMode) => {
   const newNotes = new Set<number>();
   const usedLetters = new Set<number>();
+  let chordName = '';
   const safeCount = Math.min(count, 7);
 
   // RESOLVE ACCIDENTALS FOR THIS ROUND
@@ -75,7 +86,8 @@ const createRoundData = (count: number, gameMode: GameMode, accidentalMode: Acci
     notes: Array.from(newNotes).sort((a, b) => a - b),
     anchor: newAnchor,
     colorIndices,
-    roundUseFlats: useFlats // Store the resolved preference
+    roundUseFlats: useFlats, // Store the resolved preference
+    chord: chordName,
   };
 };
 
@@ -96,7 +108,7 @@ export const useFretboardGame = (initialCount: number = 1) => {
   const [gameState, setGameState] = useState<'GUESSING' | 'REVEALED'>('GUESSING');
   const [streak, setStreak] = useState(0);
 
-  const { notes: targetNotes, anchor: anchorFret, colorIndices, roundUseFlats } = roundData;
+  const { notes: targetNotes, anchor: anchorFret, colorIndices, roundUseFlats, chord: targetChord } = roundData;
 
   const windowStart = gameMode === 'WINDOW' ? Math.max(0, anchorFret - 3) : 0;
   const windowEnd   = gameMode === 'WINDOW' ? Math.min(14, anchorFret + 3) : 14;
@@ -109,7 +121,7 @@ export const useFretboardGame = (initialCount: number = 1) => {
 
   const toggleGameMode = () => {
     setGameMode(prev => {
-      const newMode = prev === 'WINDOW' ? 'OCTAVE' : 'WINDOW';
+      const newMode = prev === 'WINDOW' ? 'OCTAVE' : prev === 'OCTAVE' ? 'CHORD' : 'WINDOW';
       setStreak(0);
       setRoundData(createRoundData(noteCount, newMode, accidentalMode));
       setClickedFrets([]);
@@ -170,7 +182,7 @@ export const useFretboardGame = (initialCount: number = 1) => {
       for (let f = windowStart; f <= windowEnd; f++) {
         const pitch = TUNING[s] + f;
         let isMatch = false;
-        if (gameMode === 'WINDOW') {
+        if (gameMode === 'WINDOW' || gameMode === 'CHORD') {
           isMatch = targetNotes.includes(pitch % 12);
         } else {
           isMatch = targetNotes.includes(pitch);
@@ -220,6 +232,7 @@ export const useFretboardGame = (initialCount: number = 1) => {
     clearGuesses, // EXPORTED
     submitGuess,
     generateNewRound,
-    TUNING
+    TUNING,
+    targetChord,
   };
 };

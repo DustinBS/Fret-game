@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { View, Text, Pressable, Modal } from 'react-native';
 import { useFretboardGame, getNoteName } from '../hooks/useFretboardGame';
 import SheetMusic from './SheetMusic';
+import { Fretboard, type FretMarker } from './Fretboard';
 
 const SAFE_PALETTE = [
   { name: 'Blue',   bg: 'bg-blue-600',   text: 'text-blue-600',   border: 'border-blue-800', hex: '#2563eb' },
@@ -25,8 +26,6 @@ const FretboardGame = () => {
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const STRING_THICKNESS = [1, 1.5, 2, 2.5, 3, 3.5];
-
   const currentRoundColors = targetNotes.map((_, idx) => {
     const colorIdx = colorIndices[idx % colorIndices.length];
     return SAFE_PALETTE[colorIdx].hex;
@@ -37,6 +36,60 @@ const FretboardGame = () => {
     if (mode === 'OCTAVE') return 'Octave';
     if (mode === 'CHORD') return 'Chord';
     return '';
+  }
+
+  const markers: FretMarker[] = [];
+  for (let sIdx = 0; sIdx < 6; sIdx++) {
+    for (let fret = 0; fret < 15; fret++) {
+      const isActiveWindow = fret >= windowStart && fret <= windowEnd;
+      const isClicked = clickedFrets.some(c => c.stringIndex === sIdx && c.fret === fret);
+      const isAnchorPos = gameMode === 'WINDOW' && sIdx === 0 && fret === anchorFret;
+      const pitch = TUNING[sIdx] + fret;
+
+      let isTarget = false;
+      let colorIndex = 0;
+
+      if (gameMode === 'WINDOW' || gameMode === 'CHORD') {
+          const targetIdx = targetNotes.indexOf(pitch % 12);
+          isTarget = targetIdx !== -1;
+          if (isTarget) colorIndex = colorIndices[targetIdx % colorIndices.length];
+      } else {
+          const targetIdx = targetNotes.indexOf(pitch);
+          isTarget = targetIdx !== -1;
+          if (isTarget) colorIndex = colorIndices[targetIdx % colorIndices.length];
+      }
+
+      const colorTheme = isTarget ? SAFE_PALETTE[colorIndex] : null;
+
+      let markerClass = "opacity-0";
+      let label: string | undefined = undefined;
+
+      if (gameState === 'GUESSING') {
+          if (isClicked) {
+              markerClass = isHiddenMode ? "opacity-0" : "bg-amber-400 border-2 border-slate-900 shadow-sm opacity-100";
+          }
+      } else if (gameState === 'REVEALED') {
+          if (isTarget && isClicked) {
+              markerClass = `${colorTheme?.bg} border-2 ${colorTheme?.border} opacity-100`;
+              label = "✓";
+          }
+          else if (isTarget && !isClicked && isActiveWindow) markerClass = `${colorTheme?.bg} opacity-50 scale-75`;
+          else if (!isTarget && isClicked) {
+              markerClass = "bg-slate-700 border-2 border-slate-900 scale-75 opacity-100";
+              label = "×";
+          }
+      }
+
+      if (markerClass !== "opacity-0" || isAnchorPos) {
+        markers.push({
+          stringIndex: sIdx,
+          fret,
+          markerClass: markerClass !== "opacity-0" ? markerClass : undefined,
+          label,
+          isAnchor: isAnchorPos
+        });
+      }
+    }
   }
 
   return (
@@ -112,79 +165,13 @@ const FretboardGame = () => {
 
       {/* --- FRETBOARD --- */}
       <View className="flex-1 bg-slate-100 px-1 justify-center w-full py-4">
-          <View className="flex-1 bg-slate-100 shadow-xl overflow-hidden rounded-lg">
-
-            <View className="flex-1 flex-col justify-evenly py-2">
-                {[0, 1, 2, 3, 4, 5].map((sIdx) => (
-                    <View key={sIdx} className="flex-1 flex-row items-center relative w-full">
-                        <View className="absolute w-full bg-slate-900 z-0 pointer-events-none" style={{ height: STRING_THICKNESS[sIdx] }} />
-
-                        {Array.from({ length: 15 }).map((_, fret) => {
-                            const isActiveWindow = fret >= windowStart && fret <= windowEnd;
-                            const isClicked = clickedFrets.some(c => c.stringIndex === sIdx && c.fret === fret);
-                            const isAnchorPos = gameMode === 'WINDOW' && sIdx === 0 && fret === anchorFret;
-                            const pitch = TUNING[sIdx] + fret;
-
-                            let isTarget = false;
-                            let colorIndex = 0;
-                            const noteVal = gameMode === 'WINDOW' || gameMode === 'CHORD' ? pitch % 12 : pitch;
-                            const targetIdx = targetNotes.indexOf(noteVal);
-                            if (targetIdx !== -1) {
-                                isTarget = true;
-                                colorIndex = colorIndices[targetIdx % colorIndices.length];
-                            }
-
-                            const colorTheme = isTarget ? SAFE_PALETTE[colorIndex] : null;
-
-                            let markerStyle = "w-6 h-6 rounded-full items-center justify-center opacity-0";
-                            let innerText = null;
-
-                            if (gameState === 'GUESSING' && isClicked) {
-                                markerStyle = isHiddenMode ? "w-6 h-6 opacity-0" : "w-6 h-6 rounded-full bg-amber-400 border-2 border-slate-900 shadow-sm opacity-100";
-                            } else if (gameState === 'REVEALED') {
-                                if (isTarget && isClicked) {
-                                    markerStyle = `w-6 h-6 rounded-full ${colorTheme?.bg} border-2 ${colorTheme?.border} opacity-100`;
-                                    innerText = "✓";
-                                }
-                                else if (isTarget && !isClicked && isActiveWindow) {
-                                    markerStyle = `w-6 h-6 rounded-full ${colorTheme?.bg} opacity-50 scale-75`;
-                                }
-                                else if (!isTarget && isClicked) {
-                                    markerStyle = "w-6 h-6 rounded-full bg-slate-700 border-2 border-slate-900 scale-75 opacity-100";
-                                    innerText = "×";
-                                }
-                            }
-
-                            return (
-                                <Pressable
-                                    key={fret}
-                                    onPress={() => handleFretClick(sIdx, fret)}
-                                    disabled={!isActiveWindow}
-                                    className={`flex-1 h-full items-center justify-center border-r border-slate-300 ${fret === 0 ? 'border-r-4 border-slate-800' : ''} ${isActiveWindow ? '' : 'bg-slate-200/50'}`}
-                                >
-                                    {isAnchorPos && <View key="anchor" className="absolute w-2 h-2 bg-red-600 rounded-sm opacity-80 z-0" />}
-                                    <View key="marker" className={markerStyle}>
-                                        {innerText && <Text className="text-white text-[10px] font-bold">{innerText}</Text>}
-                                    </View>
-                                </Pressable>
-                            );
-                        })}
-                    </View>
-                ))}
-
-                <View className="flex-row w-full h-4">
-                    {Array.from({ length: 15 }).map((_, i) => (
-                        <View key={i} className="flex-1 items-center justify-center">
-                            <Text className={`text-[8px] font-mono ${gameMode === 'WINDOW' && i === anchorFret ? 'text-red-600 font-bold' : 'text-slate-400'}`}>
-                                {i}
-                            </Text>
-                        </View>
-                    ))}
-                </View>
-            </View>
-          </View>
+          <Fretboard
+              markers={markers}
+              windowStart={windowStart}
+              windowEnd={windowEnd}
+              onFretClick={handleFretClick}
+          />
       </View>
-
 
       {/* --- SETTINGS MODAL --- */}
       <Modal animationType="slide" transparent={true} visible={isMenuOpen} onRequestClose={() => setIsMenuOpen(false)}>

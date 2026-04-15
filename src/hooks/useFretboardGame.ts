@@ -1,44 +1,13 @@
 // src/hooks/useFretboardGame.ts
 import { useState, useCallback } from 'react';
 
-// Standard Tuning High E to Low E (Visual Top to Bottom)
-const TUNING = [64, 59, 55, 50, 45, 40];
-
-const SHARPS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const FLATS  = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
-
-// Map Pitch Class (0-11) to Staff Letter Index (0=C...6=B)
-const getLetterIndices = (isFlat: boolean) => {
-    if (isFlat) {
-        // C, Db, D, Eb, E, F, Gb, G, Ab, A, Bb, B
-        return [0, 1, 1, 2, 2, 3, 4, 4, 5, 5, 6, 6];
-    } else {
-        // C, C#, D, D#, E, F, F#, G, G#, A, A#, B
-        return [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
-    }
-};
+import { TUNING, getLetterIndices } from '../utils/musicTheory';
 
 export type FretPosition = { stringIndex: number; fret: number };
 export type GameMode = 'WINDOW' | 'OCTAVE' | 'CHORD';
 export type AccidentalMode = 'SHARP' | 'FLAT' | 'BOTH';
 
-// Helper now takes the *resolved* mode for the round
-export const getNoteName = (midi: number, isFlat: boolean) => {
-  const names = isFlat ? FLATS : SHARPS;
-  const note = names[midi % 12];
-  const octave = Math.floor(midi / 12) - 1;
-  return { note, octave };
-};
-
-const CHORDS = {
-  'Major': [0, 4, 7],
-  'Minor': [0, 3, 7],
-  'Diminished': [0, 3, 6],
-  'Augmented': [0, 4, 8],
-  'Major 7th': [0, 4, 7, 11],
-  'Minor 7th': [0, 3, 7, 10],
-  'Dominant 7th': [0, 4, 7, 10],
-};
+// CHORDS unused for now
 
 const createRoundData = (count: number, gameMode: GameMode, accidentalMode: AccidentalMode) => {
   const newNotes = new Set<number>();

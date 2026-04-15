@@ -5,7 +5,7 @@ import { Renderer, Stave, StaveNote, Accidental, Formatter, Voice } from 'vexflo
 interface SheetMusicProps {
   notes: number[];
   colors: string[];
-  gameMode: 'WINDOW' | 'OCTAVE';
+  gameMode: 'WINDOW' | 'OCTAVE' | 'CHORD' | 'SANDBOX' | string;
   useFlats: boolean;
 }
 

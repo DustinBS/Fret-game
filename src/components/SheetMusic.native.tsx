@@ -6,7 +6,7 @@ import { WebView } from 'react-native-webview';
 interface SheetMusicProps {
   notes: number[];
   colors: string[];
-  gameMode: 'WINDOW' | 'OCTAVE';
+  gameMode: 'WINDOW' | 'OCTAVE' | 'CHORD' | 'SANDBOX' | string;
   useFlats: boolean;
 }
 
@@ -32,9 +32,10 @@ const SheetMusic: React.FC<SheetMusicProps> = ({ notes, colors, gameMode, useFla
     return {
       key: `${noteLetter}/${octave}`,
       accidental,
-      color: colors[i % colors.length]
+      color: colors[i % colors.length],
+      rawVal: renderMidi
     };
-  });
+  }).sort((a, b) => a.rawVal - b.rawVal);
 
   const html = `
     <!DOCTYPE html>

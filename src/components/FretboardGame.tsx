@@ -1,5 +1,6 @@
 // src/components/FretboardGame.tsx
 import React from 'react';
+import { useGlobalKeyConstraint } from '../hooks/useGlobalKey';
 import { useFretboardGame } from '../hooks/useFretboardGame';
 import { getNoteName } from '../utils/musicTheory';
 import SheetMusic from './SheetMusic';
@@ -7,15 +8,22 @@ import { Fretboard, type FretMarker } from './Fretboard';
 import { useHistory, HistoryPanel } from './History';
 
 const SAFE_PALETTE = [
-  { name: 'Blue',   bg: 'bg-blue-600',   text: 'text-blue-600',   border: 'border-blue-800', hex: '#2563eb' },
-  { name: 'Orange', bg: 'bg-orange-500', text: 'text-orange-500', border: 'border-orange-700', hex: '#f97316' },
-  { name: 'Purple', bg: 'bg-violet-600', text: 'text-violet-600', border: 'border-violet-800', hex: '#7c3aed' },
-  { name: 'Emerald',bg: 'bg-emerald-600',text: 'text-emerald-600',border: 'border-emerald-800', hex: '#059669' },
-  { name: 'Cyan',   bg: 'bg-cyan-600',   text: 'text-cyan-600',   border: 'border-cyan-800', hex: '#0891b2' },
-  { name: 'Pink',   bg: 'bg-pink-600',   text: 'text-pink-600',   border: 'border-pink-800', hex: '#db2777' },
+  { name: '1',  bg: 'bg-[#a6cee3]', text: 'text-[#a6cee3]', border: 'border-[#a6cee3]', hex: '#a6cee3' }, // color 1
+  { name: 'b2', bg: 'bg-[#1f78b4]', text: 'text-[#1f78b4]', border: 'border-[#1f78b4]', hex: '#1f78b4' }, // color 2
+  { name: '2',  bg: 'bg-[#b2df8a]', text: 'text-[#b2df8a]', border: 'border-[#b2df8a]', hex: '#b2df8a' }, // color 3
+  { name: 'b3', bg: 'bg-[#33a02c]', text: 'text-[#33a02c]', border: 'border-[#33a02c]', hex: '#33a02c' }, // color 4
+  { name: '3',  bg: 'bg-[#fb9a99]', text: 'text-[#fb9a99]', border: 'border-[#fb9a99]', hex: '#fb9a99' }, // color 5
+  { name: '4',  bg: 'bg-[#e31a1c]', text: 'text-[#e31a1c]', border: 'border-[#e31a1c]', hex: '#e31a1c' }, // color 6
+  { name: 'b5', bg: 'bg-[#fdbf6f]', text: 'text-[#fdbf6f]', border: 'border-[#fdbf6f]', hex: '#fdbf6f' }, // color 7
+  { name: '5',  bg: 'bg-[#ff7f00]', text: 'text-[#ff7f00]', border: 'border-[#ff7f00]', hex: '#ff7f00' }, // color 8
+  { name: 'b6', bg: 'bg-[#cab2d6]', text: 'text-[#cab2d6]', border: 'border-[#cab2d6]', hex: '#cab2d6' }, // color 9
+  { name: '6',  bg: 'bg-[#6a3d9a]', text: 'text-[#6a3d9a]', border: 'border-[#6a3d9a]', hex: '#6a3d9a' }, // color 10
+  { name: 'b7', bg: 'bg-[#ffff99]', text: 'text-[#ffff99]', border: 'border-[#ffff99]', hex: '#ffff99' }, // color 11
+  { name: '7',  bg: 'bg-[#b15928]', text: 'text-[#b15928]', border: 'border-[#b15928]', hex: '#b15928' }, // color 12
 ];
 
 const FretboardGame: React.FC = () => {
+  const [globalKey, setGlobalKey] = useGlobalKeyConstraint('C');
   const {
     targetNotes,
     colorIndices,
@@ -52,7 +60,7 @@ const FretboardGame: React.FC = () => {
     const targetStr = gameMode === 'CHORD' 
         ? targetChord 
         : targetNotes.map(n => getNoteName(n, roundUseFlats).note).join(', ');
-    addHistory(`${getGameModeName(gameMode)}: ${targetStr} - ${wasCorrect ? '✅' : '❌'}`, clickedFrets);
+    addHistory(`${getGameModeName(gameMode)}: ${targetStr} - ${wasCorrect ? '(Correct)' : '(Miss)'}`, clickedFrets);
   };
 
 
@@ -130,7 +138,7 @@ const FretboardGame: React.FC = () => {
         {/* Title & Streak */}
         <div className="flex flex-row lg:flex-col justify-between items-baseline lg:items-start gap-4">
             <div>
-                <h1 className="text-2xl font-black tracking-tighter uppercase">
+                <div className="flex items-center justify-between gap-1 mb-2"><span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Key: </span><select value={globalKey} onChange={(e) => setGlobalKey(e.target.value)} className="bg-white border border-slate-200 text-slate-700 px-2 py-1 rounded text-xs font-bold shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[60px]">{['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'Db', 'Ab', 'Eb', 'Bb', 'F'].map(k => (<option key={k} value={k}>{k}</option>))}</select></div><h1 className="text-2xl font-black tracking-tighter uppercase">
                   Fret<span className="text-slate-400">Focus</span>
                 </h1>
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">

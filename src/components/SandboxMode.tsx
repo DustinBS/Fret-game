@@ -45,7 +45,7 @@ const SandboxMode: React.FC = () => {
         if (quality && rootString && fretOffset) {
           const def = CHORD_DICTIONARY.find(c => c.quality === quality);
           if (def) {
-            const shape = def.shapes.find(s => s.rootString === parseInt(rootString, 10));
+            const shape = def.shapes.find((s: any) => s.rootString === parseInt(rootString, 10));
             if (shape) {
               setChordShape(def, shape, parseInt(fretOffset, 10));
             }
@@ -68,7 +68,7 @@ const SandboxMode: React.FC = () => {
   const markers: FretMarker[] = clickedFrets.map(p => ({
     stringIndex: p.stringIndex,
     fret: p.fret,
-    markerClass: `scale-100 ${p.interval ? getIntervalColor(p.interval) : 'bg-blue-500'} ${p.interval === '1' ? 'border-2 border-slate-900' : ''} text-white shadow-sm`,
+      markerClass: `scale-100 ${p.interval ? getIntervalColor(p.interval) : 'bg-blue-500 text-white'} ${p.interval === '1' ? 'border-2 border-slate-900' : ''} shadow-sm`,
     label: p.interval || undefined
   }));
 
@@ -105,23 +105,7 @@ const SandboxMode: React.FC = () => {
             {filteredChords.map(def => (
                <div key={def.quality} className="border-b border-slate-100 last:border-0 p-2">
                  <div className="font-bold text-sm mb-1">{def.quality}</div>
-                 <div className="flex gap-2">
-                   {def.shapes.map((shape, i) => (
-                     <button
-                       key={i}
-                       onClick={() => {
-                           setChordShape(def, shape);
-                           const newPositions = shape.offsets.map((so: any) => ({
-                               stringIndex: so.string, fret: so.offset, interval: so.interval
-                           }));
-                           addHistory(`${def.quality} (Str ${shape.rootString})`, newPositions);
-                       }}
-                       className="text-[10px] bg-slate-100 hover:bg-blue-100 text-slate-700 px-2 py-1 rounded"
-                     >
-                       {STRING_NAMES[shape.rootString] || `Str ${shape.rootString}`}
-                     </button>
-                   ))}
-                 </div>
+                 <div className="flex gap-1 justify-between">{[5,4,3].map((strIdx) => { const shape = def.shapes.find((s: any) => s.rootString === strIdx); if (shape) { return (<button key={strIdx} onClick={() => { const newPositions = setChordShape(def, shape); addHistory(`${def.quality} (Str ${shape.rootString + 1})`, newPositions); }} className="flex-1 text-[10px] bg-slate-100 hover:bg-blue-100 text-slate-700 px-1 py-1 rounded text-center whitespace-nowrap">{STRING_NAMES[shape.rootString] || `Str ${shape.rootString + 1}`}</button>); } else { return (<button key={strIdx} disabled title="none found" className="flex-1 text-[10px] bg-slate-50 text-slate-300 px-1 py-1 rounded border border-slate-100 cursor-not-allowed text-center whitespace-nowrap">{STRING_NAMES[strIdx] || `Str ${strIdx + 1}`}</button>); } })}</div>
                </div>
             ))}
           </div>
@@ -153,12 +137,12 @@ const SandboxMode: React.FC = () => {
               <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 shrink-0">Detected Chords</h2>
               {analyzedChords.length > 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 w-full h-full overflow-hidden">
-                  <div className="flex flex-col flex-wrap content-center gap-1 overflow-x-auto w-full max-h-[85px] custom-scrollbar pb-1">
+                  <div className="flex flex-row items-center justify-start gap-2 overflow-x-auto w-full max-h-[85px] custom-scrollbar pb-1 px-1">
                     {analyzedChords.map((chord, i) => (
                       <button 
                         key={i} 
                         onClick={() => setSelectedChordIndex(i)}
-                        className={`text-sm font-bold px-2 py-1 rounded transition-colors break-words whitespace-nowrap max-w-[150px] ${selectedChordIndex === i ? 'bg-blue-600 text-white shadow-md' : 'bg-blue-100 text-slate-800 hover:bg-blue-200'}`}
+                        className={`text-sm font-bold px-3 py-2 rounded transition-colors break-words whitespace-nowrap min-w-max max-w-[200px] ${selectedChordIndex === i ? 'bg-blue-600 text-white shadow-md' : 'bg-blue-100 text-slate-800 hover:bg-blue-200'}`}
                       >
                         {chord.name}
                       </button>
@@ -180,12 +164,8 @@ const SandboxMode: React.FC = () => {
                         if (!match) return;
 
                         let key = match[1];
-                        let originalQuality = match[2];
+                        let originalQuality = match[2].trim();
                         let galleryQuality = originalQuality;
-                        
-                        if (originalQuality === 'maj') galleryQuality = 'major';
-                        else if (originalQuality === 'm') galleryQuality = 'minor';
-                        else if (originalQuality === 'dim') galleryQuality = 'diminished';
 
                         const params = new URLSearchParams(window.location.search);
                         params.set('tab', 'gallery');

@@ -18,10 +18,10 @@ export default function ChordQuizMode() {
     setInputRoot,
     inputQuality,
     setInputQuality,
-    inputShape,
+    
     setInputShape,
-    keyConstraint,
-    setKeyConstraint,
+    
+    
     generateQuiz,
     submitGuess
   } = useChordQuiz();
@@ -32,8 +32,8 @@ export default function ChordQuizMode() {
     const wasCorrect = submitGuess();
     if (quizData && gameState === 'PLAYING') {
       const actualName = `${getNoteNameFromPitchClass(quizData.rootPitchClass, quizData.useFlats)} ${quizData.quality}`;
-      const shapeName = `(Str ${quizData.rootString})`;
-      addHistory(`${actualName} ${shapeName} - ${wasCorrect ? 'âœ…' : 'âŒ'}`);
+      const shapeName = `(Str ${quizData.rootString + 1})`;
+      addHistory(`${actualName} ${shapeName} - ${wasCorrect ? '(Correct)' : '(Miss)'}`);
     }
   };
 
@@ -59,7 +59,7 @@ export default function ChordQuizMode() {
 
         <div className="flex flex-col items-end lg:items-start">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Streak</span>
-            <span className={`text-3xl font-mono font-bold leading-none ${streak > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>
+            <span className={`text-3xl font-mono font-bold leading-none ${streak > 0 ? '(Correct)' : '(Miss)'}`}>
               {streak}
             </span>
         </div>
@@ -95,45 +95,7 @@ export default function ChordQuizMode() {
 
             <div>
               <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">String Shape</label>
-              <select 
-                className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none"
-                value={inputShape}
-                onChange={e => setInputShape(e.target.value)}
-              >
-                <option value="">(Optional)</option>
-                {[5, 4, 3, 2, 1, 0].map(sIdx => (
-                  <option key={sIdx} value={sIdx}>{STRING_NAMES[sIdx]}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">Key Constraint</label>
-              <select 
-                className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none"
-                value={keyConstraint}
-                onChange={e => setKeyConstraint(e.target.value)}
-              >
-                <option value="None">None</option>
-                <option value="C major">C major</option>
-                <option value="C# major">C# major</option>
-                <option value="Db major">Db major</option>
-                <option value="D major">D major</option>
-                <option value="D# major">D# major</option>
-                <option value="Eb major">Eb major</option>
-                <option value="E major">E major</option>
-                <option value="F major">F major</option>
-                <option value="F# major">F# major</option>
-                <option value="Gb major">Gb major</option>
-                <option value="G major">G major</option>
-                <option value="G# major">G# major</option>
-                <option value="Ab major">Ab major</option>
-                <option value="A major">A major</option>
-                <option value="A# major">A# major</option>
-                <option value="Bb major">Bb major</option>
-                <option value="B major">B major</option>
-                <option value="Cb major">Cb major</option>
-              </select>
+              
             </div>
 
             {gameState === 'PLAYING' ? (
@@ -168,7 +130,7 @@ export default function ChordQuizMode() {
             />
           </div>
 
-          <div className={`flex flex-col items-center justify-center w-64 min-h-[96px] transition-opacity duration-300 ${gameState === 'REVEALED' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <div className={`flex flex-col items-center justify-center w-64 min-h-[96px] transition-opacity duration-300 ${gameState === 'REVEALED' ? '(Correct)' : '(Miss)'}`}>
             <p className="text-3xl font-black text-slate-800 bg-blue-100 px-4 py-2 rounded shadow-sm">{getNoteNameFromPitchClass(quizData.rootPitchClass, quizData.useFlats)} {quizData.quality}</p>
             <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-2">{STRING_NAMES[quizData.rootString] || `String ${quizData.rootString}`} Shape</p>
           </div>
@@ -178,11 +140,11 @@ export default function ChordQuizMode() {
           numFrets={25}
           windowStart={Math.max(0, quizData.rootFret - 2)}
           windowEnd={quizData.rootFret + 4}
-          markers={gameState === 'REVEALED' ? quizData.shape.offsets.map(o => ({
+          markers={gameState === 'REVEALED' ? quizData.shape.offsets.map((o: any) => ({
             stringIndex: o.string,
             fret: quizData.rootFret + o.offset,
             isAnchor: o.string === quizData.rootString,
-            markerClass: `scale-100 ${getIntervalColor((o as any).interval || '1')} ${o.string === quizData.rootString ? 'border-2 border-slate-900' : ''} text-white shadow-sm`,
+            markerClass: `scale-100 ${getIntervalColor((o as any).interval || '1')} ${o.string === quizData.rootString ? '(Correct)' : '(Miss)'} text-white shadow-sm`,
             label: (o as any).interval || '1'
           })) : []}
           onFretClick={() => {}}

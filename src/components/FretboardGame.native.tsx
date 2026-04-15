@@ -6,12 +6,18 @@ import SheetMusic from './SheetMusic';
 import { Fretboard, type FretMarker } from './Fretboard';
 
 const SAFE_PALETTE = [
-  { name: 'Blue',   bg: 'bg-blue-600',   text: 'text-blue-600',   border: 'border-blue-800', hex: '#2563eb' },
-  { name: 'Orange', bg: 'bg-orange-500', text: 'text-orange-500', border: 'border-orange-700', hex: '#f97316' },
-  { name: 'Purple', bg: 'bg-violet-600', text: 'text-violet-600', border: 'border-violet-800', hex: '#7c3aed' },
-  { name: 'Emerald',bg: 'bg-emerald-600',text: 'text-emerald-600',border: 'border-emerald-800', hex: '#059669' },
-  { name: 'Cyan',   bg: 'bg-cyan-600',   text: 'text-cyan-600',   border: 'border-cyan-800', hex: '#0891b2' },
-  { name: 'Pink',   bg: 'bg-pink-600',   text: 'text-pink-600',   border: 'border-pink-800', hex: '#db2777' },
+  { name: '1',  bg: 'bg-[#a6cee3]', text: 'text-[#a6cee3]', border: 'border-[#a6cee3]', hex: '#a6cee3' },
+  { name: 'b2', bg: 'bg-[#1f78b4]', text: 'text-[#1f78b4]', border: 'border-[#1f78b4]', hex: '#1f78b4' },
+  { name: '2',  bg: 'bg-[#b2df8a]', text: 'text-[#b2df8a]', border: 'border-[#b2df8a]', hex: '#b2df8a' },
+  { name: 'b3', bg: 'bg-[#33a02c]', text: 'text-[#33a02c]', border: 'border-[#33a02c]', hex: '#33a02c' },
+  { name: '3',  bg: 'bg-[#fb9a99]', text: 'text-[#fb9a99]', border: 'border-[#fb9a99]', hex: '#fb9a99' },
+  { name: '4',  bg: 'bg-[#e31a1c]', text: 'text-[#e31a1c]', border: 'border-[#e31a1c]', hex: '#e31a1c' },
+  { name: 'b5', bg: 'bg-[#fdbf6f]', text: 'text-[#fdbf6f]', border: 'border-[#fdbf6f]', hex: '#fdbf6f' },
+  { name: '5',  bg: 'bg-[#ff7f00]', text: 'text-[#ff7f00]', border: 'border-[#ff7f00]', hex: '#ff7f00' },
+  { name: 'b6', bg: 'bg-[#cab2d6]', text: 'text-[#cab2d6]', border: 'border-[#cab2d6]', hex: '#cab2d6' },
+  { name: '6',  bg: 'bg-[#6a3d9a]', text: 'text-[#6a3d9a]', border: 'border-[#6a3d9a]', hex: '#6a3d9a' },
+  { name: 'b7', bg: 'bg-[#ffff99]', text: 'text-[#ffff99]', border: 'border-[#ffff99]', hex: '#ffff99' },
+  { name: '7',  bg: 'bg-[#b15928]', text: 'text-[#b15928]', border: 'border-[#b15928]', hex: '#b15928' },
 ];
 
 const FretboardGame = () => {

@@ -1,13 +1,18 @@
 import React from 'react';
 
 const legendItems = [
-  { label: 'Root (1)', classes: 'bg-red-600' },
-  { label: '2nd / 9', classes: 'bg-orange-500' },
-  { label: '3rd', classes: 'bg-yellow-400' },
-  { label: '4th / 11', classes: 'bg-green-500' },
-  { label: '5th', classes: 'bg-cyan-500' },
-  { label: '6th / 13', classes: 'bg-blue-600' },
-  { label: '7th', classes: 'bg-purple-600' }
+  { label: '1', classes: 'bg-[#a6cee3]' },
+  { label: 'b2', classes: 'bg-[#1f78b4]' },
+  { label: '2 / 9', classes: 'bg-[#b2df8a]' },
+  { label: 'b3', classes: 'bg-[#33a02c]' },
+  { label: '3', classes: 'bg-[#fb9a99]' },
+  { label: '4 / 11', classes: 'bg-[#e31a1c]' },
+  { label: 'b5 / #4', classes: 'bg-[#fdbf6f]' },
+  { label: '5', classes: 'bg-[#ff7f00]' },
+  { label: 'b6 / #5', classes: 'bg-[#cab2d6]' },
+  { label: '6 / 13', classes: 'bg-[#6a3d9a]' },
+  { label: 'b7', classes: 'bg-[#facc15]' },
+  { label: '7', classes: 'bg-[#b15928]' }
 ];
 
 export const LegendPanel: React.FC<{ variant?: 'normal' | 'large' }> = ({ variant = 'normal' }) => {
@@ -19,7 +24,7 @@ export const LegendPanel: React.FC<{ variant?: 'normal' | 'large' }> = ({ varian
           {legendItems.map((item, i) => (
             <div key={i} className="flex items-center gap-4">
               <div className={`w-6 h-6 rounded shadow-sm ${item.classes}`}></div>
-              <span className="text-xs font-bold text-slate-600 uppercase tracking-widest">{item.label}</span>
+              <span className="text-xs font-bold text-slate-600 tracking-widest">{item.label}</span>
             </div>
           ))}
         </div>
@@ -34,7 +39,7 @@ export const LegendPanel: React.FC<{ variant?: 'normal' | 'large' }> = ({ varian
         {legendItems.map((item, i) => (
           <div key={i} className="flex items-center gap-2">
             <div className={`w-3 h-3 rounded shadow-sm ${item.classes}`}></div>
-            <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">{item.label}</span>
+            <span className="text-[9px] font-bold text-slate-600 tracking-widest">{item.label}</span>
           </div>
         ))}
       </div>

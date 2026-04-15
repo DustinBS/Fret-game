@@ -7,7 +7,7 @@ import { LegendPanel } from './LegendPanel';
 
 export const GalleryMode: React.FC = () => {
   const [keyConstraint, setKeyConstraintState] = useState('C');
-  const [showDiatonic, setShowDiatonic] = useState(false);
+  const [showDiatonic, setShowDiatonic] = useState(true);
   const [selectedDiatonic, setSelectedDiatonic] = useState<Record<string, string>>({});
   const scrollContainerRef = useRef<HTMLElement>(null);
 
@@ -153,19 +153,23 @@ export const GalleryMode: React.FC = () => {
                                       
                                       {showDiatonic && (
                                         diatonicOptions.length > 1 ? (
-                                           <select 
-                                             className="text-xs p-1 border border-slate-200 rounded bg-slate-50 mt-1 cursor-pointer w-16"
-                                             value={activeDiatonic}
-                                             onChange={(e) => setSelectedDiatonic({...selectedDiatonic, [def.quality]: e.target.value})}
-                                           >
-                                             {diatonicOptions.map(d => <option key={d} value={d}>{d}</option>)}
-                                           </select>
+                                           <div className="flex flex-col gap-1 mt-1">
+                                             {diatonicOptions.map(d => (
+                                               <button
+                                                 key={d}
+                                                 onClick={() => setSelectedDiatonic({...selectedDiatonic, [def.quality]: d})}
+                                                 className={`text-[10px] uppercase font-bold tracking-widest px-2 py-1 rounded border transition-colors ${activeDiatonic === d ? 'bg-blue-600 border-blue-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-blue-50'}`}
+                                               >
+                                                 {d}
+                                               </button>
+                                             ))}
+                                           </div>
                                         ) : diatonicOptions.length === 1 ? (
-                                           <span className="text-[10px] text-slate-500 font-normal border border-slate-200 bg-slate-50 px-1 flex items-center justify-center h-6 rounded w-10 mt-1">
+                                           <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold border border-slate-200 bg-slate-50 px-2 flex items-center justify-center py-1 rounded mt-1">
                                              {diatonicOptions[0]}
                                            </span>
                                         ) : (
-                                           <span className="text-[10px] text-slate-400 italic mt-1 h-6 flex items-center">Non-diatonic</span>
+                                           <span className="text-[10px] text-slate-400 italic mt-1 py-1 flex items-center">Non-diatonic</span>
                                         )
                                       )}
                                   </div>
@@ -176,6 +180,14 @@ export const GalleryMode: React.FC = () => {
 
                                   const stringOpenPitch = TUNING[shape.rootString];
                                   let rootFret = (actualRootPitch - (stringOpenPitch % 12) + 12) % 12;
+                                  
+                                  // Ensure plausibility: lowest note cannot be negative 
+                                  let minFretInShape = Math.min(...shape.offsets.map(o => rootFret + o.offset));
+                                  while (minFretInShape < 0) {
+                                      rootFret += 12;
+                                      minFretInShape += 12;
+                                  }
+
                                   if (rootFret <= 2) rootFret += 12; // Push up to avoid too many ledger lines if desired
 
                                   const pitches = shape.offsets.map(o => TUNING[o.string] + rootFret + o.offset);

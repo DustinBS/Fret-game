@@ -62,7 +62,7 @@ const [keyConstraint, setKeyConstraint] = useState('C major');
     if (rootFret <= 2 && Math.random() > 0.5) rootFret += 12;
 
     // TUNING[o.string] + rootFret + o.offset is correct for the absolute pitch of that note.
-    const pitches = shape.offsets.map(o => TUNING[o.string] + rootFret + o.offset);
+    const pitches = shape.offsets.map((o: any) => TUNING[o.string] + rootFret + o.offset);
 
     if (keyConstraint === 'None') {
         useFlats = [1, 3, 5, 8, 10].includes(targetPitchClass) && Math.random() > 0.5;
@@ -99,7 +99,7 @@ const [keyConstraint, setKeyConstraint] = useState('C major');
     const wasCorrect = isRootCorrect && isQualityCorrect && (inputShape === '' || isShapeCorrect);
     
     if (wasCorrect) {
-      setStreak(s => s + 1);
+      setStreak((s: any) => s + 1);
     } else {
       setStreak(0);
     }

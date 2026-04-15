@@ -1,11 +1,35 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import FretboardGame from './src/components/FretboardGame';
 import SandboxMode from './src/components/SandboxMode';
 import ChordQuizMode from './src/components/ChordQuizMode';
 import GalleryMode from './src/components/GalleryMode';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY'>('TRAINER');
+  const [activeTab, setActiveTabState] = useState<'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY'>('TRAINER');
+
+  useEffect(() => {
+    const handleLocationChange = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab')?.toUpperCase();
+      if (tab && ['TRAINER', 'SANDBOX', 'QUIZ', 'GALLERY'].includes(tab)) {
+        setActiveTabState(tab as any);
+      } else {
+        setActiveTabState('TRAINER');
+      }
+    };
+    
+    handleLocationChange();
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
+  }, []);
+
+  const setActiveTab = (tab: 'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY') => {
+    const params = new URLSearchParams(window.location.search);
+    params.set('tab', tab.toLowerCase());
+    window.history.pushState({}, '', '?' + params.toString());
+    setActiveTabState(tab);
+    window.dispatchEvent(new Event('popstate'));
+  };
 
   return (
     <div className="w-full min-h-screen bg-white">

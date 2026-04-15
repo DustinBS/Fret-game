@@ -30,27 +30,27 @@ export const STRING_NAMES = ['Str 1e', 'Str 2B', 'Str 3G', 'Str 4D', 'Str 5A', '
 
 export const getIntervalColor = (interval: string) => {
     switch (interval) {
-        case '1': return 'bg-red-500 text-white';
-        case 'b2': case '2': case '9': return 'bg-yellow-500 text-white';
-        case 'b3': case '3': return 'bg-green-500 text-white';
-        case '4': case '11': case '#11': return 'bg-teal-500 text-white';
-        case 'b5': case '5': case '#5': return 'bg-blue-500 text-white';
-        case 'b6': case '6': case '13': return 'bg-indigo-500 text-white';
-        case 'bb7': case 'b7': case '7': return 'bg-purple-500 text-white';
-        default: return 'bg-gray-500 text-white';
+        case '1': return 'bg-red-600 text-white';
+        case 'b2': case '2': case '9': return 'bg-orange-500 text-white';
+        case 'b3': case '3': return 'bg-yellow-400 text-slate-900';
+        case '4': case '11': case '#11': return 'bg-green-500 text-white';
+        case 'b5': case '5': case '#5': return 'bg-cyan-500 text-white';
+        case 'b6': case '6': case '13': return 'bg-blue-600 text-white';
+        case 'bb7': case 'b7': case '7': return 'bg-purple-600 text-white';
+        default: return 'bg-slate-500 text-white';
     }
 };
 
 
 export const getIntervalHexColor = (interval: string) => {
     switch (interval) {
-        case '1': return '#ef4444';
-        case 'b2': case '2': case '9': return '#eab308';
-        case 'b3': case '3': return '#22c55e';
-        case '4': case '11': case '#11': return '#14b8a6';
-        case 'b5': case '5': case '#5': return '#3b82f6';
-        case 'b6': case '6': case '13': return '#6366f1';
-        case 'bb7': case 'b7': case '7': return '#a855f7';
+        case '1': return '#dc2626';
+        case 'b2': case '2': case '9': return '#f97316';
+        case 'b3': case '3': return '#facc15';
+        case '4': case '11': case '#11': return '#22c55e';
+        case 'b5': case '5': case '#5': return '#06b6d4';
+        case 'b6': case '6': case '13': return '#2563eb';
+        case 'bb7': case 'b7': case '7': return '#9333ea';
         default: return '#64748b';
     }
 };

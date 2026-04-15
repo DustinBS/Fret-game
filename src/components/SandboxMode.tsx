@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSandbox } from '../hooks/useSandbox';
 import { Fretboard, type FretMarker } from './Fretboard';
 import SheetMusic from './SheetMusic';
@@ -32,6 +32,34 @@ const SandboxMode: React.FC = () => {
     1: "Str 2B",
     0: "Str 1e"
   };
+
+  useEffect(() => {
+    const handleUrlState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab')?.toLowerCase();
+      if (tab === 'sandbox') {
+        const quality = params.get('quality');
+        const rootString = params.get('rootString');
+        const fretOffset = params.get('fretOffset');
+
+        if (quality && rootString && fretOffset) {
+          const def = CHORD_DICTIONARY.find(c => c.quality === quality);
+          if (def) {
+            const shape = def.shapes.find(s => s.rootString === parseInt(rootString, 10));
+            if (shape) {
+              setChordShape(def, shape, parseInt(fretOffset, 10));
+            }
+          }
+          // Clear parameters so it doesn't get sticky if user navigates tabs
+          window.history.replaceState({}, '', '?tab=sandbox');
+        }
+      }
+    };
+    
+    handleUrlState();
+    window.addEventListener('popstate', handleUrlState);
+    return () => window.removeEventListener('popstate', handleUrlState);
+  }, []);
 
   const filteredChords = CHORD_DICTIONARY.filter(c => 
     c.quality.toLowerCase().includes(search.toLowerCase())

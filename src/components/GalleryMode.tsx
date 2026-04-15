@@ -1,11 +1,34 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
 import { getIntervalHexColor, TUNING, NOTES_FLAT, NOTES_SHARP } from '../utils/musicTheory';
 import SheetMusic from './SheetMusic';
 import { LegendPanel } from './LegendPanel';
 
 export const GalleryMode: React.FC = () => {
-  const [keyConstraint, setKeyConstraint] = useState('C');
+  const [keyConstraint, setKeyConstraintState] = useState('C');
+
+  useEffect(() => {
+    const handleUrlState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab')?.toLowerCase();
+      if (tab === 'gallery') {
+        const key = params.get('key');
+        if (key && (NOTES_FLAT.includes(key) || NOTES_SHARP.includes(key))) {
+          setKeyConstraintState(key);
+        }
+      }
+    };
+    handleUrlState();
+    window.addEventListener('popstate', handleUrlState);
+    return () => window.removeEventListener('popstate', handleUrlState);
+  }, []);
+
+  const setKeyConstraint = (key: string) => {
+    setKeyConstraintState(key);
+    const params = new URLSearchParams(window.location.search);
+    params.set('key', key);
+    window.history.replaceState({}, '', '?' + params.toString());
+  };
 
   // Parse Key Constraint to root Pitch Class (0-11)
   const rootObj = useMemo(() => {
@@ -86,14 +109,31 @@ export const GalleryMode: React.FC = () => {
                                 const pitches = shape.offsets.map(o => TUNING[o.string] + rootFret + o.offset);
                                 const colors = shape.offsets.map(o => getIntervalHexColor(o.interval || '1'));
 
+                                const handleCellClick = () => {
+                                    const params = new URLSearchParams(window.location.search);
+                                    params.set('tab', 'sandbox');
+                                    params.set('quality', def.quality);
+                                    params.set('rootString', str.toString());
+                                    params.set('fretOffset', rootFret.toString());
+                                    params.delete('key');
+                                    window.history.pushState({}, '', '?' + params.toString());
+                                    window.dispatchEvent(new Event('popstate'));
+                                };
+
                                 return (
                                     <td key={str} className="p-2 text-center align-middle transform scale-90 origin-center">
-                                        <SheetMusic 
-                                            notes={pitches} 
-                                            colors={colors} 
-                                            gameMode="SANDBOX" 
-                                            useFlats={rootObj.useFlats} 
-                                        />
+                                        <div 
+                                          onClick={handleCellClick}
+                                          className="cursor-pointer border border-transparent hover:border-blue-300 hover:bg-blue-50/50 hover:shadow-sm rounded-lg p-2 transition-all"
+                                          title={`Open ${keyConstraint} ${def.quality} (String ${str+1}) in Sandbox`}
+                                        >
+                                          <SheetMusic 
+                                              notes={pitches} 
+                                              colors={colors} 
+                                              gameMode="SANDBOX" 
+                                              useFlats={rootObj.useFlats} 
+                                          />
+                                        </div>
                                     </td>
                                 );
                             })}
@@ -105,7 +145,7 @@ export const GalleryMode: React.FC = () => {
       </main>
 
       <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-l border-slate-200 flex flex-col shrink-0 p-6">
-        <LegendPanel />
+        <LegendPanel variant="large" />
       </aside>
 
     </div>

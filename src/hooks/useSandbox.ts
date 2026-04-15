@@ -26,13 +26,13 @@ export const useSandbox = () => {
     setSelectedChordIndex(0);
   };
 
-  const setChordShape = (definition: any, shape: any) => {
+  const setChordShape = (definition: any, shape: any, baseFretOffset: number = 0) => {
     const newPositions: FretPosition[] = [];
     shape.offsets.forEach((so: any) => {
-      newPositions.push({ stringIndex: so.string, fret: so.offset, interval: so.interval });
+      newPositions.push({ stringIndex: so.string, fret: so.offset + baseFretOffset, interval: so.interval });
     });
     setClickedFrets(newPositions);
-    setSelectedChordName(`${definition.quality} (String ${shape.rootString} root)`);
+    setSelectedChordName(`${definition.quality} (String ${shape.rootString + 1} root)`);
   };
 
   const analyzedChords = useMemo(() => {

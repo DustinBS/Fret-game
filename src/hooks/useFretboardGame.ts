@@ -175,6 +175,8 @@ export const useFretboardGame = (initialCount: number = 1) => {
     }
 
     setGameState('REVEALED');
+    return allCorrectFound && noFalsePositives && correctPositions.length > 0;
+    return allCorrectFound && noFalsePositives && correctPositions.length > 0;
   };
 
   return {
@@ -199,6 +201,7 @@ export const useFretboardGame = (initialCount: number = 1) => {
     streak,
     handleFretClick,
     clearGuesses, // EXPORTED
+    setClickedFrets,
     submitGuess,
     generateNewRound,
     TUNING,

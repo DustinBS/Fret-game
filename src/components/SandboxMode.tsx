@@ -3,6 +3,9 @@ import { useSandbox } from '../hooks/useSandbox';
 import { Fretboard, type FretMarker } from './Fretboard';
 import SheetMusic from './SheetMusic';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
+import { getIntervalColor, getIntervalHexColor } from '../utils/musicTheory';
+import { useHistory, HistoryPanel } from './History';
+import { LegendPanel } from './LegendPanel';
 
 const SandboxMode: React.FC = () => {
   const {
@@ -11,10 +14,24 @@ const SandboxMode: React.FC = () => {
     setChordShape,
     clearSelection,
     analyzedChords,
-    activePitches
+    selectedChordIndex,
+    setSelectedChordIndex,
+    activePitches,
+    setClickedFrets
   } = useSandbox();
 
+  const { history, addHistory, clearHistory } = useHistory<any>('sandboxHistory');
+
   const [search, setSearch] = useState('');
+
+  const STRING_NAMES: Record<number, string> = {
+    5: "Str 6E",
+    4: "Str 5A",
+    3: "Str 4D",
+    2: "Str 3G",
+    1: "Str 2B",
+    0: "Str 1e"
+  };
 
   const filteredChords = CHORD_DICTIONARY.filter(c => 
     c.quality.toLowerCase().includes(search.toLowerCase())
@@ -23,7 +40,8 @@ const SandboxMode: React.FC = () => {
   const markers: FretMarker[] = clickedFrets.map(p => ({
     stringIndex: p.stringIndex,
     fret: p.fret,
-    markerClass: "scale-100 bg-blue-500 border-2 border-slate-900 shadow-sm"
+    markerClass: `scale-100 ${p.interval ? getIntervalColor(p.interval) : 'bg-blue-500'} ${p.interval === '1' ? 'border-2 border-slate-900' : ''} text-white shadow-sm`,
+    label: p.interval || undefined
   }));
 
   const getGhostClass = (_sIdx: number, _fret: number) => {
@@ -31,10 +49,10 @@ const SandboxMode: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-white text-slate-900 font-sans select-none">
+    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-white text-slate-900 font-sans select-none">
       
       {/* SIDEBAR NAVIGATION */}
-      <aside className="w-full lg:w-72 bg-slate-50 border-r border-slate-200 flex flex-col p-6 gap-8 shrink-0">
+      <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-r border-slate-200 flex flex-col p-6 gap-8 shrink-0">
         <div>
           <h1 className="text-2xl font-black tracking-tighter uppercase">
             Fret<span className="text-slate-400">Sandbox</span>
@@ -63,10 +81,16 @@ const SandboxMode: React.FC = () => {
                    {def.shapes.map((shape, i) => (
                      <button
                        key={i}
-                       onClick={() => setChordShape(def, shape)}
+                       onClick={() => {
+                           setChordShape(def, shape);
+                           const newPositions = shape.offsets.map((so: any) => ({
+                               stringIndex: so.string, fret: so.offset, interval: so.interval
+                           }));
+                           addHistory(`${def.quality} (Str ${shape.rootString})`, newPositions);
+                       }}
                        className="text-[10px] bg-slate-100 hover:bg-blue-100 text-slate-700 px-2 py-1 rounded"
                      >
-                       Str {shape.rootString}
+                       {STRING_NAMES[shape.rootString] || `Str ${shape.rootString}`}
                      </button>
                    ))}
                  </div>
@@ -82,46 +106,76 @@ const SandboxMode: React.FC = () => {
               <span className="opacity-0 group-hover:opacity-100 transition-opacity">×</span>
           </button>
         </div>
+
       </aside>
 
-      <main className="flex-1 flex flex-col items-center justify-center p-4 gap-8 min-w-0">
+      <main className="flex-1 h-full overflow-y-auto flex flex-col items-center justify-center py-1 p-4 lg:p-10 lg:py-1 gap-1 min-w-0">
          
-         {/* Top HUD */}
-         <div className="flex flex-col items-center justify-center min-h-[200px] w-full">
-            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Detected Chords</h2>
-            {analyzedChords.length > 0 ? (
-               <div className="flex flex-wrap items-center justify-center gap-4">
-                 {analyzedChords.map((chord, i) => (
-                   <span key={i} className="text-4xl font-black text-slate-800 bg-blue-100 px-4 py-2 rounded">
-                     {chord}
-                   </span>
-                 ))}
-               </div>
-            ) : (
-               <div className="text-xl font-bold text-slate-300">Click frets to analyze...</div>
-            )}
+         <div className="flex flex-row items-center justify-center min-h-40 w-full gap-8">
+            <div className="flex justify-center scale-110 lg:scale-125 origin-center min-w-[200px]">
+               <SheetMusic 
+                  notes={activePitches} 
+                  colors={clickedFrets.map(p => p.interval ? getIntervalHexColor(p.interval) : '#2563eb')} 
+                  gameMode="SANDBOX" 
+                  useFlats={true} 
+               />
+            </div>
 
-            {/* Render actual exact pitches */}
-            {activePitches.length > 0 && (
-                <div className="mt-8 scale-125">
-                   <SheetMusic 
-                      notes={activePitches} 
-                      colors={activePitches.map(() => '#2563eb')} 
-                      gameMode="SANDBOX" 
-                      useFlats={true} 
-                   />
+            <div className="flex flex-col items-center min-h-[96px] max-h-[140px] px-2 w-[340px]">
+              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 shrink-0">Detected Chords</h2>
+              {analyzedChords.length > 0 ? (
+                <div className="flex flex-col items-center justify-center gap-2 w-full h-full overflow-hidden">
+                  <div className="flex flex-col flex-wrap content-center gap-1 overflow-x-auto w-full max-h-[85px] custom-scrollbar pb-1">
+                    {analyzedChords.map((chord, i) => (
+                      <button 
+                        key={i} 
+                        onClick={() => setSelectedChordIndex(i)}
+                        className={`text-sm font-bold px-2 py-1 rounded transition-colors break-words whitespace-nowrap max-w-[150px] ${selectedChordIndex === i ? 'bg-blue-600 text-white shadow-md' : 'bg-blue-100 text-slate-800 hover:bg-blue-200'}`}
+                      >
+                        {chord.name}
+                      </button>
+                    ))}
+                  </div>
+                  <button 
+                    onClick={() => addHistory(analyzedChords[selectedChordIndex].name, clickedFrets)}
+                    className="text-[10px] mt-2 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded uppercase tracking-widest transition"
+                  >
+                     Save Chord
+                  </button>
                 </div>
-            )}
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-2 opacity-50 text-slate-400">
+                  <span className="text-2xl border border-dashed border-slate-300 font-bold px-4 py-2 rounded">
+                    Unknown
+                  </span>
+                  <button 
+                    disabled
+                    className="text-[10px] mt-2 px-3 py-1 bg-slate-300 text-slate-500 font-bold rounded uppercase tracking-widest cursor-not-allowed"
+                  >
+                     Save Chord
+                  </button>
+                </div>
+              )}
+            </div>
          </div>
 
          {/* Fretboard */}
          <Fretboard
+           numFrets={25}
            markers={markers}
            onFretClick={handleFretClick}
            getGhostClass={getGhostClass}
          />
 
+        {/* Spacer to match Trainer flex distribution */}
+        <div className="mt-6 pointer-events-none opacity-0 select-none py-4 text-xl">_</div>
       </main>
+
+      {/* RIGHT SIDEBAR - HISTORY */}
+      <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-l border-slate-200 flex flex-col shrink-0 p-6">
+        <HistoryPanel history={history} onClear={clearHistory} onRestore={(state) => setClickedFrets(state)} />
+        <LegendPanel />
+      </aside>
     </div>
   );
 };

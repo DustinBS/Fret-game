@@ -75,6 +75,11 @@ const SheetMusic: React.FC<SheetMusicProps> = ({
 
     noteDataList.sort((a, b) => a.rawVal - b.rawVal);
 
+    if (noteDataList.length === 0) {
+      // Just draw empty stave frame to keep layout steady
+      return;
+    }
+
     const staveNote = new StaveNote({
       keys: noteDataList.map(n => n.key),
       duration: "w",

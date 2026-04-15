@@ -14,6 +14,7 @@ interface FretboardProps {
     markers: FretMarker[];
     windowStart?: number;
     windowEnd?: number;
+    numFrets?: number;
     onFretClick: (stringIndex: number, fret: number) => void;
     // An optional function generating ghost note hover classes per fret/string.
     // If not provided, no hover state is rendered.
@@ -25,13 +26,14 @@ export const Fretboard: React.FC<FretboardProps> = ({
     windowStart = 0, 
     windowEnd = 14, 
     onFretClick,
-    getGhostClass 
+    getGhostClass,
+    numFrets = 15
 }) => {
     return (
         <div className="relative w-full max-w-[1000px] overflow-x-auto pb-4 custom-scrollbar px-4">
             {/* Fret Numbers */}
-            <div className="flex pl-10 mb-1 min-w-[800px]">
-                {Array.from({ length: 15 }).map((_, i) => {
+            <div className="flex pl-10 mb-1 min-w-max w-[calc(max(800px,100%))]" style={{ minWidth: `${numFrets * 50}px` }}>
+                {Array.from({ length: numFrets }).map((_, i) => {
                     const isActive = i >= windowStart && i <= windowEnd;
                     const anchor = markers.find(m => m.fret === i && m.isAnchor);
                     return (
@@ -47,15 +49,15 @@ export const Fretboard: React.FC<FretboardProps> = ({
             </div>
 
             {/* The Board */}
-            <div className="relative border-y-[12px] border-[#5D4037] bg-slate-100 shadow-sm min-w-[800px]">
+            <div className="relative border-y-[12px] border-[#5D4037] bg-slate-100 shadow-sm min-w-max w-[calc(max(800px,100%))]" style={{ minWidth: `${numFrets * 50}px` }}>
                 {/* Fret Lines */}
                 <div className="absolute inset-0 flex pl-10">
-                    {Array.from({ length: 15 }).map((_, fret) => {
+                    {Array.from({ length: numFrets }).map((_, fret) => {
                         const isActive = fret >= windowStart && fret <= windowEnd;
                         return (
                             <div key={fret} className={`flex-1 border-r border-slate-400 h-full relative ${fret === 0 ? 'border-r-[6px] border-slate-800' : ''} ${isActive ? 'bg-white' : 'bg-slate-100 opacity-60'}`}>
-                                {[3, 5, 7, 9].includes(fret) && <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-slate-300 rounded-full" />}
-                                {fret === 12 && (
+                                {[3, 5, 7, 9, 15, 17, 19, 21].includes(fret) && <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-slate-300 rounded-full" />}
+                                {[12, 24].includes(fret) && (
                                     <>
                                         <div className="absolute top-[33%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-slate-300 rounded-full" />
                                         <div className="absolute top-[66%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-slate-300 rounded-full" />
@@ -72,7 +74,7 @@ export const Fretboard: React.FC<FretboardProps> = ({
                         <div key={sIdx} className="relative h-12 flex items-center">
                             <div className="absolute w-full bg-slate-900 pointer-events-none" style={{ height: `${STRING_THICKNESS[sIdx]}px` }} />
                             <div className="flex w-full h-full pl-10">
-                                {Array.from({ length: 15 }).map((_, fIdx) => {
+                                {Array.from({ length: numFrets }).map((_, fIdx) => {
                                     const isActiveWindow = fIdx >= windowStart && fIdx <= windowEnd;
                                     const marker = markers.find(m => m.stringIndex === sIdx && m.fret === fIdx);
                                     

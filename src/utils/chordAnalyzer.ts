@@ -45,7 +45,9 @@ export const FORMULA_TO_CHORD: Record<string, string> = {
   // Some common rootless/shell voicings or typical subsets can be added if needed
 };
 
-export function analyzeChord(midiPitches: number[]): string[] {
+export interface AnalyzedChordResult { name: string; rootMidi: number; bassMidi: number; intervals: number[]; }
+
+export function analyzeChord(midiPitches: number[]): AnalyzedChordResult[] {
   if (!midiPitches || midiPitches.length === 0) {
     return [];
   }
@@ -58,7 +60,7 @@ export function analyzeChord(midiPitches: number[]): string[] {
   // 2. Deduplicate pitch classes (0-11) from the midiPitches.
   const pitchClasses = Array.from(new Set(midiPitches.map((p) => p % 12)));
   
-  const recognizedChords: string[] = [];
+  const recognizedChords: AnalyzedChordResult[] = [];
 
   // 4. Iterate over every pitch class present as a potential root.
   for (const root of pitchClasses) {
@@ -81,7 +83,7 @@ export function analyzeChord(midiPitches: number[]): string[] {
       if (bassPitchClass !== root) {
         chordName += ` / ${bassNoteName}`;
       }
-      recognizedChords.push(chordName);
+      recognizedChords.push({ name: chordName, rootMidi: root, bassMidi: bassPitchClass, intervals });
     }
   }
 

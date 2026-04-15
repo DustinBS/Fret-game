@@ -21,13 +21,38 @@ export function useChordQuiz() {
 
   const [inputRoot, setInputRoot] = useState('');
   const [inputQuality, setInputQuality] = useState('');
+  const [inputShape, setInputShape] = useState('');
+  
+const [keyConstraint, setKeyConstraint] = useState('C major');
 
   const generateQuiz = useCallback(() => {
-    const randomDictEntry = CHORD_DICTIONARY[Math.floor(Math.random() * CHORD_DICTIONARY.length)];
+    let allowedQualities = CHORD_DICTIONARY;
+    let allowedRoots = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    let useFlats = Math.random() > 0.5;
+
+    if (keyConstraint !== 'None') {
+        const rootString = keyConstraint.split(' ')[0]; // "C" or "Db"
+        let pitchClass = NOTES_SHARP.indexOf(rootString);
+        if (pitchClass === -1) pitchClass = NOTES_FLAT.indexOf(rootString);
+        
+        useFlats = rootString.includes('b') || rootString === 'F';
+        
+        const majorScaleOffsets = [0, 2, 4, 5, 7, 9, 11];
+        const triadQualities = ['maj7', 'min7', 'min7', 'maj7', '7', 'min7', 'min7b5'];
+        
+        const index = Math.floor(Math.random() * 7);
+        const chordRoot = (Math.max(0, pitchClass) + majorScaleOffsets[index]) % 12;
+        const chordQuality = triadQualities[index];
+        
+        allowedRoots = [chordRoot];
+        allowedQualities = CHORD_DICTIONARY.filter(d => d.quality === chordQuality);
+    }
+
+    const randomDictEntry = allowedQualities[Math.floor(Math.random() * allowedQualities.length)];
     const quality = randomDictEntry.quality;
     const shape = randomDictEntry.shapes[Math.floor(Math.random() * randomDictEntry.shapes.length)];
     
-    const targetPitchClass = Math.floor(Math.random() * 12);
+    const targetPitchClass = allowedRoots[Math.floor(Math.random() * allowedRoots.length)];
     
     // Find base fret on the root string
     const stringOpenPitch = TUNING[shape.rootString];
@@ -39,12 +64,14 @@ export function useChordQuiz() {
     // TUNING[o.string] + rootFret + o.offset is correct for the absolute pitch of that note.
     const pitches = shape.offsets.map(o => TUNING[o.string] + rootFret + o.offset);
 
-    const useFlats = [1, 3, 5, 8, 10].includes(targetPitchClass) && Math.random() > 0.5;
+    if (keyConstraint === 'None') {
+        useFlats = [1, 3, 5, 8, 10].includes(targetPitchClass) && Math.random() > 0.5;
+    }
 
     setQuizData({
       rootPitchClass: targetPitchClass,
       quality,
-      shape,
+      shape: { ...shape, rootString: shape.rootString },
       rootString: shape.rootString,
       rootFret,
       activePitches: pitches,
@@ -53,33 +80,48 @@ export function useChordQuiz() {
     
     setInputRoot('');
     setInputQuality('');
+    setInputShape('');
     setGameState('PLAYING');
-  }, []);
+  }, [keyConstraint]);
 
   const submitGuess = useCallback(() => {
-    if (!quizData || gameState !== 'PLAYING') return;
+    if (!quizData || gameState !== 'PLAYING') return false;
 
     const correctRootNames = [NOTES_FLAT[quizData.rootPitchClass], NOTES_SHARP[quizData.rootPitchClass]];
     const isRootCorrect = correctRootNames.some(name => name.toLowerCase() === inputRoot.trim().toLowerCase());
     const isQualityCorrect = quizData.quality.toLowerCase() === inputQuality.trim().toLowerCase();
+    
+    // Check shape string, allow matching the string number
+    const isShapeCorrect = inputShape === '' || 
+        inputShape === String(quizData.rootString) || 
+        inputShape.includes(String(6 - quizData.rootString)); 
 
-    if (isRootCorrect && isQualityCorrect) {
+    const wasCorrect = isRootCorrect && isQualityCorrect && (inputShape === '' || isShapeCorrect);
+    
+    if (wasCorrect) {
       setStreak(s => s + 1);
     } else {
       setStreak(0);
     }
 
     setGameState('REVEALED');
-  }, [quizData, inputRoot, inputQuality, gameState]);
+    return wasCorrect;
+  }, [quizData, inputRoot, inputQuality, inputShape, gameState]);
 
   return {
     quizData,
+    setQuizData,
     gameState,
+    setGameState,
     streak,
     inputRoot,
     setInputRoot,
     inputQuality,
     setInputQuality,
+    inputShape,
+    setInputShape,
+    keyConstraint,
+    setKeyConstraint,
     generateQuiz,
     submitGuess
   };

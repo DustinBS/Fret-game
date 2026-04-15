@@ -2,9 +2,10 @@ import { useState } from 'react';
 import FretboardGame from './src/components/FretboardGame';
 import SandboxMode from './src/components/SandboxMode';
 import ChordQuizMode from './src/components/ChordQuizMode';
+import GalleryMode from './src/components/GalleryMode';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'TRAINER' | 'SANDBOX' | 'QUIZ'>('TRAINER');
+  const [activeTab, setActiveTab] = useState<'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY'>('TRAINER');
 
   return (
     <div className="w-full min-h-screen bg-white">
@@ -28,11 +29,18 @@ function App() {
         >
           Quiz
         </button>
+        <button 
+          onClick={() => setActiveTab('GALLERY')}
+          className={`text-sm font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${activeTab === 'GALLERY' ? 'bg-purple-600 text-white' : 'text-slate-500 hover:bg-slate-200'}`}
+        >
+          Gallery
+        </button>
       </nav>
 
       {activeTab === 'TRAINER' && <FretboardGame />}
       {activeTab === 'SANDBOX' && <SandboxMode />}
       {activeTab === 'QUIZ' && <ChordQuizMode />}
+      {activeTab === 'GALLERY' && <GalleryMode />}
     </div>
   );
 }

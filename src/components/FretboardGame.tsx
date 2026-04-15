@@ -4,6 +4,7 @@ import { useFretboardGame } from '../hooks/useFretboardGame';
 import { getNoteName } from '../utils/musicTheory';
 import SheetMusic from './SheetMusic';
 import { Fretboard, type FretMarker } from './Fretboard';
+import { useHistory, HistoryPanel } from './History';
 
 const SAFE_PALETTE = [
   { name: 'Blue',   bg: 'bg-blue-600',   text: 'text-blue-600',   border: 'border-blue-800', hex: '#2563eb' },
@@ -38,10 +39,22 @@ const FretboardGame: React.FC = () => {
     handleFretClick,
     submitGuess,
     clearGuesses, // IMPORTED
+    setClickedFrets,
     generateNewRound,
     targetChord,
     TUNING
   } = useFretboardGame(3); // CHANGED: Default to 3 notes
+
+  const { history, addHistory, clearHistory } = useHistory<any>('trainerHistory');
+
+  const handleCheckAnswer = () => {
+    const wasCorrect = submitGuess();
+    const targetStr = gameMode === 'CHORD' 
+        ? targetChord 
+        : targetNotes.map(n => getNoteName(n, roundUseFlats).note).join(', ');
+    addHistory(`${getGameModeName(gameMode)}: ${targetStr} - ${wasCorrect ? '✅' : '❌'}`, clickedFrets);
+  };
+
 
   const currentRoundColors = targetNotes.map((_, idx) => {
     const colorIdx = colorIndices[idx % colorIndices.length];
@@ -109,10 +122,10 @@ const FretboardGame: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-white text-slate-900 font-sans select-none">
+    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-white text-slate-900 font-sans select-none">
 
       {/* SIDEBAR NAVIGATION */}
-      <aside className="w-full lg:w-72 bg-slate-50 border-r border-slate-200 flex flex-col p-6 gap-8 shrink-0">
+      <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-r border-slate-200 flex flex-col p-6 gap-8 shrink-0">
 
         {/* Title & Streak */}
         <div className="flex flex-row lg:flex-col justify-between items-baseline lg:items-start gap-4">
@@ -188,7 +201,7 @@ const FretboardGame: React.FC = () => {
       </aside>
 
       {/* MAIN CONTENT AREA */}
-      <main className="flex-1 flex flex-col items-center justify-center py-1 p-4 lg:p-10 lg:py-1 gap-1 min-w-0">
+      <main className="flex-1 h-full overflow-y-auto flex flex-col items-center justify-center py-1 p-4 lg:p-10 lg:py-1 gap-1 min-w-0">
 
         {/* TARGET DISPLAY */}
         <div className="flex flex-col items-center min-h-40 justify-center w-full">
@@ -246,13 +259,18 @@ const FretboardGame: React.FC = () => {
         {/* Action Button */}
         <div className="mt-6">
             {gameState === 'GUESSING' ? (
-            <button onClick={submitGuess} className="px-16 py-4 bg-slate-900 text-white text-xl font-bold tracking-wide hover:bg-slate-700 transition-colors active:transform active:scale-95 shadow-xl rounded-sm border-2 border-transparent">CHECK ANSWER</button>
+            <button onClick={handleCheckAnswer} className="px-16 py-4 bg-slate-900 text-white text-xl font-bold tracking-wide hover:bg-slate-700 transition-colors active:transform active:scale-95 shadow-xl rounded-sm border-2 border-transparent">CHECK ANSWER</button>
             ) : (
             <button onClick={generateNewRound} className="px-16 py-4 bg-white text-slate-900 border-2 border-slate-900 text-xl font-bold tracking-wide hover:bg-slate-50 transition-colors active:transform active:scale-95 shadow-xl rounded-sm flex items-center gap-2">NEXT ROUND <span>→</span></button>
             )}
         </div>
 
       </main>
+
+      {/* RIGHT SIDEBAR - HISTORY */}
+      <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-l border-slate-200 flex flex-col shrink-0 p-6">
+        <HistoryPanel history={history} onClear={clearHistory} onRestore={(state) => setClickedFrets(state)} />
+      </aside>
     </div>
   );
 };

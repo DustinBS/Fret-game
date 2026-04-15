@@ -25,3 +25,39 @@ export const getLetterIndices = (isFlat: boolean) => {
 
 // Standard Tuning High E to Low E (Visual Top to Bottom)
 export const TUNING = [64, 59, 55, 50, 45, 40];
+
+export const STRING_NAMES = ['Str 1e', 'Str 2B', 'Str 3G', 'Str 4D', 'Str 5A', 'Str 6E'];
+
+export const getIntervalColor = (interval: string) => {
+    switch (interval) {
+        case '1': return 'bg-red-500 text-white';
+        case 'b2': case '2': case '9': return 'bg-yellow-500 text-white';
+        case 'b3': case '3': return 'bg-green-500 text-white';
+        case '4': case '11': case '#11': return 'bg-teal-500 text-white';
+        case 'b5': case '5': case '#5': return 'bg-blue-500 text-white';
+        case 'b6': case '6': case '13': return 'bg-indigo-500 text-white';
+        case 'bb7': case 'b7': case '7': return 'bg-purple-500 text-white';
+        default: return 'bg-gray-500 text-white';
+    }
+};
+
+
+export const getIntervalHexColor = (interval: string) => {
+    switch (interval) {
+        case '1': return '#ef4444';
+        case 'b2': case '2': case '9': return '#eab308';
+        case 'b3': case '3': return '#22c55e';
+        case '4': case '11': case '#11': return '#14b8a6';
+        case 'b5': case '5': case '#5': return '#3b82f6';
+        case 'b6': case '6': case '13': return '#6366f1';
+        case 'bb7': case 'b7': case '7': return '#a855f7';
+        default: return '#64748b';
+    }
+};
+
+export const semitoneToIntervalString = (semitone: number): string => {
+   const map: Record<number, string> = {
+      0: '1', 1: 'b2', 2: '2', 3: 'b3', 4: '3', 5: '4', 6: 'b5', 7: '5', 8: '#5', 9: '6', 10: 'b7', 11: '7'
+   };
+   return map[semitone] || '?';
+};

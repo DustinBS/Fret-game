@@ -1,22 +1,41 @@
 import { useEffect } from 'react';
 import { useChordQuiz } from '../hooks/useChordQuiz';
-import { getNoteNameFromPitchClass } from '../utils/musicTheory';
+import { getNoteNameFromPitchClass, STRING_NAMES, getIntervalColor, getIntervalHexColor } from '../utils/musicTheory';
 import { Fretboard } from './Fretboard';
 import SheetMusic from './SheetMusic';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
+import { useHistory, HistoryPanel } from './History';
+import { LegendPanel } from './LegendPanel';
 
 export default function ChordQuizMode() {
   const {
     quizData,
+    setQuizData,
     gameState,
+    setGameState,
     streak,
     inputRoot,
     setInputRoot,
     inputQuality,
     setInputQuality,
+    inputShape,
+    setInputShape,
+    keyConstraint,
+    setKeyConstraint,
     generateQuiz,
     submitGuess
   } = useChordQuiz();
+
+  const { history, addHistory, clearHistory } = useHistory<any>('chordQuizHistory');
+
+  const handleSubmit = () => {
+    const wasCorrect = submitGuess();
+    if (quizData && gameState === 'PLAYING') {
+      const actualName = `${getNoteNameFromPitchClass(quizData.rootPitchClass, quizData.useFlats)} ${quizData.quality}`;
+      const shapeName = `(Str ${quizData.rootString})`;
+      addHistory(`${actualName} ${shapeName} - ${wasCorrect ? 'âœ…' : 'âŒ'}`);
+    }
+  };
 
   useEffect(() => {
     generateQuiz();
@@ -25,10 +44,10 @@ export default function ChordQuizMode() {
   if (!quizData) return null;
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-white text-slate-900 font-sans select-none">
+    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-white text-slate-900 font-sans select-none">
       
       {/* SIDEBAR NAVIGATION */}
-      <aside className="w-full lg:w-72 bg-slate-50 border-r border-slate-200 flex flex-col p-6 gap-8 shrink-0">
+      <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-r border-slate-200 flex flex-col p-6 gap-8 shrink-0">
         <div>
           <h1 className="text-2xl font-black tracking-tighter uppercase">
             Chord<span className="text-slate-400">Quiz</span>
@@ -45,7 +64,6 @@ export default function ChordQuizMode() {
             </span>
         </div>
 
-        {gameState === 'PLAYING' && (
           <div className="flex flex-col gap-4 border-t border-slate-200 pt-6">
             <div>
               <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">Root Note</label>
@@ -69,67 +87,127 @@ export default function ChordQuizMode() {
                 onChange={e => setInputQuality(e.target.value)}
               />
               <datalist id="qualities">
-                {CHORD_DICTIONARY.map(d => (
-                  <option key={d.quality} value={d.quality} />
+                {CHORD_DICTIONARY.map((d, index) => (
+                  <option key={index} value={d.quality} />
                 ))}
               </datalist>
             </div>
 
-            <button 
-              onClick={submitGuess}
-              className="mt-4 w-full bg-blue-600 text-white font-bold uppercase tracking-wider py-3 rounded hover:bg-blue-700 transition"
-            >
-              Submit
-            </button>
+            <div>
+              <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">String Shape</label>
+              <select 
+                className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none"
+                value={inputShape}
+                onChange={e => setInputShape(e.target.value)}
+              >
+                <option value="">(Optional)</option>
+                {[5, 4, 3, 2, 1, 0].map(sIdx => (
+                  <option key={sIdx} value={sIdx}>{STRING_NAMES[sIdx]}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">Key Constraint</label>
+              <select 
+                className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none"
+                value={keyConstraint}
+                onChange={e => setKeyConstraint(e.target.value)}
+              >
+                <option value="None">None</option>
+                <option value="C major">C major</option>
+                <option value="C# major">C# major</option>
+                <option value="Db major">Db major</option>
+                <option value="D major">D major</option>
+                <option value="D# major">D# major</option>
+                <option value="Eb major">Eb major</option>
+                <option value="E major">E major</option>
+                <option value="F major">F major</option>
+                <option value="F# major">F# major</option>
+                <option value="Gb major">Gb major</option>
+                <option value="G major">G major</option>
+                <option value="G# major">G# major</option>
+                <option value="Ab major">Ab major</option>
+                <option value="A major">A major</option>
+                <option value="A# major">A# major</option>
+                <option value="Bb major">Bb major</option>
+                <option value="B major">B major</option>
+                <option value="Cb major">Cb major</option>
+              </select>
+            </div>
+
+            {gameState === 'PLAYING' ? (
+              <button 
+                onClick={handleSubmit}
+                className="mt-4 w-full bg-blue-600 text-white font-bold uppercase tracking-wider py-3 rounded hover:bg-blue-700 transition"
+              >
+                Submit
+              </button>
+            ) : (
+              <button 
+                onClick={generateQuiz}
+                className="mt-4 w-full bg-emerald-600 text-white font-bold uppercase tracking-wider py-3 rounded hover:bg-emerald-700 transition"
+              >
+                Next Quiz
+              </button>
+            )}
           </div>
-        )}
-        
-        {gameState === 'REVEALED' && (
-          <div className="flex flex-col gap-4 border-t border-slate-200 pt-6">
-            <button 
-              onClick={generateQuiz}
-              className="w-full bg-emerald-600 text-white font-bold uppercase tracking-wider py-3 rounded hover:bg-emerald-700 transition"
-            >
-              Next Quiz
-            </button>
-          </div>
-        )}
+
+
       </aside>
 
-      <main className="flex-1 flex flex-col items-center justify-center p-4 lg:p-10 gap-8 min-w-0">
+      <main className="flex-1 h-full overflow-y-auto flex flex-col items-center justify-center py-1 p-4 lg:p-10 lg:py-1 gap-1 min-w-0">
      
-        <div className="flex justify-center scale-110 lg:scale-125 origin-center bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <SheetMusic 
-            notes={quizData.activePitches} 
-            colors={quizData.activePitches.map(() => '#333')} 
-            gameMode="SANDBOX" 
-            useFlats={quizData.useFlats} 
-          />
+        <div className="flex flex-row items-center justify-center min-h-40 w-full gap-8">
+          <div className="flex justify-center scale-110 lg:scale-125 origin-center min-w-[200px]">
+            <SheetMusic 
+              notes={quizData.activePitches} 
+              colors={gameState === 'REVEALED' ? quizData.shape.offsets.map((o: any) => getIntervalHexColor(o.interval || '1')) : quizData.activePitches.map(() => '#333')} 
+              gameMode="SANDBOX" 
+              useFlats={quizData.useFlats} 
+            />
+          </div>
+
+          <div className={`flex flex-col items-center justify-center w-64 min-h-[96px] transition-opacity duration-300 ${gameState === 'REVEALED' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+            <p className="text-3xl font-black text-slate-800 bg-blue-100 px-4 py-2 rounded shadow-sm">{getNoteNameFromPitchClass(quizData.rootPitchClass, quizData.useFlats)} {quizData.quality}</p>
+            <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-2">{STRING_NAMES[quizData.rootString] || `String ${quizData.rootString}`} Shape</p>
+          </div>
         </div>
 
-        {gameState === 'REVEALED' && (
-          <div className="flex flex-col items-center space-y-8 w-full">
-            <div className="text-center">
-              <p className="text-2xl"><strong>Answer:</strong> {getNoteNameFromPitchClass(quizData.rootPitchClass, quizData.useFlats)} {quizData.quality}</p>
-              <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-2">String {quizData.rootString} Shape</p>
-            </div>
+        <Fretboard
+          numFrets={25}
+          windowStart={Math.max(0, quizData.rootFret - 2)}
+          windowEnd={quizData.rootFret + 4}
+          markers={gameState === 'REVEALED' ? quizData.shape.offsets.map(o => ({
+            stringIndex: o.string,
+            fret: quizData.rootFret + o.offset,
+            isAnchor: o.string === quizData.rootString,
+            markerClass: `scale-100 ${getIntervalColor((o as any).interval || '1')} ${o.string === quizData.rootString ? 'border-2 border-slate-900' : ''} text-white shadow-sm`,
+            label: (o as any).interval || '1'
+          })) : []}
+          onFretClick={() => {}}
+        />
 
-            <div className="w-full overflow-hidden">
-               <Fretboard 
-                 windowStart={Math.max(0, quizData.rootFret - 2)}
-                 windowEnd={quizData.rootFret + 4}
-                 markers={quizData.shape.offsets.map(o => ({
-                   stringIndex: o.string,
-                   fret: quizData.rootFret + o.offset,
-                   isAnchor: o.string === quizData.rootString,
-                   markerClass: o.string === quizData.rootString ? "scale-100 bg-blue-600 border-2 border-slate-900" : "scale-100 bg-slate-200 text-slate-800"
-                 }))}
-                 onFretClick={() => {}}
-               />
-            </div>
-          </div>
-        )}
+        {/* Spacer to match Trainer flex distribution */}
+        <div className="mt-6 pointer-events-none opacity-0 select-none py-4 text-xl">_</div>
+
       </main>
+
+      {/* RIGHT SIDEBAR - HISTORY */}
+      <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-l border-slate-200 flex flex-col shrink-0 p-6">
+        <HistoryPanel 
+            history={history} 
+            onClear={clearHistory} 
+            onRestore={(state) => {
+                setQuizData(state.quizData);
+                setInputRoot(state.inputRoot);
+                setInputQuality(state.inputQuality);
+                setInputShape(state.inputShape);
+                setGameState('REVEALED');
+            }} 
+        />
+        <LegendPanel />
+      </aside>
     </div>
   );
 }

@@ -164,12 +164,41 @@ const SandboxMode: React.FC = () => {
                       </button>
                     ))}
                   </div>
-                  <button 
-                    onClick={() => addHistory(analyzedChords[selectedChordIndex].name, clickedFrets)}
-                    className="text-[10px] mt-2 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded uppercase tracking-widest transition"
-                  >
-                     Save Chord
-                  </button>
+                  <div className="flex gap-2 mt-2">
+                    <button 
+                      onClick={() => addHistory(analyzedChords[selectedChordIndex].name, clickedFrets)}
+                      className="text-[10px] px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded uppercase tracking-widest transition"
+                    >
+                      Save Chord
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const chord = analyzedChords[selectedChordIndex];
+                        if (!chord) return;
+                        const namePart = chord.name.split('/')[0].trim();
+                        const match = namePart.match(/^([A-G][b#]?)(.*)$/);
+                        if (!match) return;
+
+                        let key = match[1];
+                        let originalQuality = match[2];
+                        let galleryQuality = originalQuality;
+                        
+                        if (originalQuality === 'maj') galleryQuality = 'major';
+                        else if (originalQuality === 'm') galleryQuality = 'minor';
+                        else if (originalQuality === 'dim') galleryQuality = 'diminished';
+
+                        const params = new URLSearchParams(window.location.search);
+                        params.set('tab', 'gallery');
+                        params.set('key', key);
+                        params.set('scrollTo', galleryQuality);
+                        window.history.pushState({}, '', '?' + params.toString());
+                        window.dispatchEvent(new Event('popstate'));
+                      }}
+                      className="text-[10px] px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded uppercase tracking-widest transition"
+                    >
+                      See In Gallery
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-2 opacity-50 text-slate-400">

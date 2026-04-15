@@ -5,7 +5,7 @@ import { Renderer, Stave, StaveNote, Accidental, Formatter, Voice } from 'vexflo
 interface SheetMusicProps {
   notes: number[];
   colors: string[];
-  gameMode: 'WINDOW' | 'OCTAVE';
+  gameMode: 'WINDOW' | 'OCTAVE' | 'CHORD' | 'SANDBOX' | string;
   useFlats: boolean;
 }
 
@@ -74,6 +74,11 @@ const SheetMusic: React.FC<SheetMusicProps> = ({
     });
 
     noteDataList.sort((a, b) => a.rawVal - b.rawVal);
+
+    if (noteDataList.length === 0) {
+      // Just draw empty stave frame to keep layout steady
+      return;
+    }
 
     const staveNote = new StaveNote({
       keys: noteDataList.map(n => n.key),

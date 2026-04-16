@@ -1,6 +1,125 @@
 export const NOTES_FLAT = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
 export const NOTES_SHARP = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
+export const KEY_CONSTRAINT_OPTIONS = [
+    'A', 'A#', 'Ab',
+    'B', 'B#', 'Bb',
+    'C', 'C#', 'Cb',
+    'D', 'D#', 'Db',
+    'E', 'E#', 'Eb',
+    'F', 'F#', 'Fb',
+    'G', 'G#', 'Gb',
+];
+
+const NON_STANDARD_TO_RENDERABLE_KEY: Record<string, string> = {
+    'A#': 'Bb',
+    'B#': 'C',
+    'D#': 'Eb',
+    'E#': 'F',
+    'G#': 'Ab',
+    Fb: 'E',
+};
+
+const KEY_SIGNATURE_SHARPS_ORDER = ['F', 'C', 'G', 'D', 'A', 'E', 'B'] as const;
+const KEY_SIGNATURE_FLATS_ORDER = ['B', 'E', 'A', 'D', 'G', 'C', 'F'] as const;
+
+const MAJOR_KEY_SIGNATURES: Record<string, { accidental: '#' | 'b'; count: number } | null> = {
+    C: null,
+    G: { accidental: '#', count: 1 },
+    D: { accidental: '#', count: 2 },
+    A: { accidental: '#', count: 3 },
+    E: { accidental: '#', count: 4 },
+    B: { accidental: '#', count: 5 },
+    'F#': { accidental: '#', count: 6 },
+    'C#': { accidental: '#', count: 7 },
+    F: { accidental: 'b', count: 1 },
+    Bb: { accidental: 'b', count: 2 },
+    Eb: { accidental: 'b', count: 3 },
+    Ab: { accidental: 'b', count: 4 },
+    Db: { accidental: 'b', count: 5 },
+    Gb: { accidental: 'b', count: 6 },
+    Cb: { accidental: 'b', count: 7 },
+};
+
+const KEY_NAME_TO_PITCH_CLASS: Record<string, number> = {
+    A: 9,
+    'A#': 10,
+    Ab: 8,
+    B: 11,
+    'B#': 0,
+    Bb: 10,
+    C: 0,
+    'C#': 1,
+    Cb: 11,
+    D: 2,
+    'D#': 3,
+    Db: 1,
+    E: 4,
+    'E#': 5,
+    Eb: 3,
+    F: 5,
+    'F#': 6,
+    Fb: 4,
+    G: 7,
+    'G#': 8,
+    Gb: 6,
+};
+
+export function getKeySignatureInfo(keyConstraint: string) {
+    const keyName = keyConstraint.split(' ')[0];
+    const renderableKeyName = getRenderableKeySignature(keyName);
+
+    let pitchClass = KEY_NAME_TO_PITCH_CLASS[keyName];
+    if (pitchClass === undefined) {
+        if (NOTES_FLAT.includes(renderableKeyName)) {
+            pitchClass = NOTES_FLAT.indexOf(renderableKeyName);
+        } else if (NOTES_SHARP.includes(renderableKeyName)) {
+            pitchClass = NOTES_SHARP.indexOf(renderableKeyName);
+        } else {
+            pitchClass = 0;
+        }
+    }
+
+    const useFlats = keyName.includes('b') || keyName === 'F';
+    const hasAccidentalInName = keyName.includes('#') || keyName.includes('b');
+
+    return {
+        keyName,
+        renderableKeyName,
+        pitchClass,
+        useFlats,
+        hasAccidentalInName,
+    };
+}
+
+export function getRenderableKeySignature(keyNameOrConstraint: string): string {
+    const keyName = keyNameOrConstraint.split(' ')[0];
+    return NON_STANDARD_TO_RENDERABLE_KEY[keyName] || keyName;
+}
+
+export function keySignatureUsesFlats(keyNameOrConstraint: string): boolean {
+    const renderable = getRenderableKeySignature(keyNameOrConstraint);
+    return renderable.includes('b') || renderable === 'F';
+}
+
+export function getKeySignatureLetterAccidentals(keyNameOrConstraint: string): Record<string, '#' | 'b'> {
+    const renderable = getRenderableKeySignature(keyNameOrConstraint);
+    const signature = MAJOR_KEY_SIGNATURES[renderable];
+
+    if (!signature) {
+        return {};
+    }
+
+    const letters = signature.accidental === '#'
+        ? KEY_SIGNATURE_SHARPS_ORDER.slice(0, signature.count)
+        : KEY_SIGNATURE_FLATS_ORDER.slice(0, signature.count);
+
+    return letters.reduce<Record<string, '#' | 'b'>>((acc, letter) => {
+        acc[letter] = signature.accidental;
+        return acc;
+    }, {});
+}
+
 export const getNoteName = (midi: number, isFlat: boolean) => {
   const names = isFlat ? NOTES_FLAT : NOTES_SHARP;
   const note = names[midi % 12];

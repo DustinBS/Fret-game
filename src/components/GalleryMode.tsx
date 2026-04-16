@@ -1,74 +1,81 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
-import { getIntervalHexColor, TUNING, NOTES_FLAT, NOTES_SHARP, getNoteNameFromPitchClass } from '../utils/musicTheory';
+import { getIntervalHexColor, TUNING, getNoteNameFromPitchClass, getKeySignatureInfo, KEY_CONSTRAINT_OPTIONS, keySignatureUsesFlats } from '../utils/musicTheory';
 import { DIATONIC_INTERVALS, CHORD_QUALITY_DIATONIC_MAP } from '../utils/diatonic';
+import { getGalleryOrderedChordDefinitions } from '../utils/chordOrdering';
+import { flashTableRowDataCells, scrollToTargetAndFlash } from '../utils/scrollFeedback';
 import SheetMusic from './SheetMusic';
 import { LegendPanel } from './LegendPanel';
-import { useGlobalKeyConstraint } from '../hooks/useGlobalKey';
 
-export const GalleryMode: React.FC = () => {
-  const [keyConstraint, setKeyConstraintState] = useGlobalKeyConstraint('C');
+interface GalleryModeProps {
+  keyConstraint: string;
+  setKeyConstraint: (k: string) => void;
+  useGalleryColors: boolean;
+}
+
+export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyConstraint, useGalleryColors }) => {
   const [showDiatonic, setShowDiatonic] = useState(true);
   const [selectedDiatonic, setSelectedDiatonic] = useState<Record<string, string>>({});
   const scrollContainerRef = useRef<HTMLElement>(null);
+
+  const orderedChordDefs = useMemo(() => getGalleryOrderedChordDefinitions(CHORD_DICTIONARY), []);
+  const rootObj = useMemo(() => getKeySignatureInfo(keyConstraint), [keyConstraint]);
+  const notationUsesFlats = useMemo(() => keySignatureUsesFlats(rootObj.renderableKeyName), [rootObj.renderableKeyName]);
+  const stringShapes = [5, 4, 3, 2];
+
+  const scrollToQuality = (quality: string) => {
+    if (!scrollContainerRef.current) {
+      return;
+    }
+    const rows = Array.from(scrollContainerRef.current.querySelectorAll('tr[data-quality]'));
+    const targetRow = rows.find((row) => (row as HTMLElement).dataset.quality === quality);
+    if (targetRow) {
+      scrollToTargetAndFlash({
+        container: scrollContainerRef.current,
+        target: targetRow as HTMLElement,
+        flashTarget: (target) => flashTableRowDataCells(target, { thicknessPx: 4 }),
+        postSettleDelayMs: 180,
+      });
+    }
+  };
 
   useEffect(() => {
     const handleUrlState = () => {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get('tab')?.toLowerCase();
-      if (tab === 'gallery') {
-        const key = params.get('key');
-        if (key && (NOTES_FLAT.includes(key) || NOTES_SHARP.includes(key))) {
-          setKeyConstraintState(key);
-        }
+      if (tab !== 'gallery') {
+        return;
+      }
 
-        const scrollTo = params.get('scrollTo');
-        if (scrollTo && scrollContainerRef.current) {
-          const el = scrollContainerRef.current.querySelector(`[data-quality="${scrollTo}"]`);
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            params.delete('scrollTo');
-            window.history.replaceState({}, '', '?' + params.toString());
-          }
-        } else if (scrollContainerRef.current) {
-           const savedScroll = sessionStorage.getItem('galleryScroll');
-           if (savedScroll) {
-             scrollContainerRef.current.scrollTop = parseInt(savedScroll, 10);
-           }
+      const key = params.get('key');
+      if (key && KEY_CONSTRAINT_OPTIONS.includes(key)) {
+        setKeyConstraint(key);
+      }
+
+      const scrollTo = params.get('scrollTo');
+      if (scrollTo) {
+        scrollToQuality(scrollTo);
+        params.delete('scrollTo');
+        window.history.replaceState({}, '', `?${params.toString()}`);
+      } else if (scrollContainerRef.current) {
+        const savedScroll = sessionStorage.getItem('galleryScroll');
+        if (savedScroll) {
+          scrollContainerRef.current.scrollTop = parseInt(savedScroll, 10);
         }
       }
     };
+
     setTimeout(handleUrlState, 100);
     window.addEventListener('popstate', handleUrlState);
     return () => window.removeEventListener('popstate', handleUrlState);
-  }, []);
+  }, [setKeyConstraint]);
 
   const handleScroll = (e: React.UIEvent<HTMLElement>) => {
-     sessionStorage.setItem('galleryScroll', e.currentTarget.scrollTop.toString());
+    sessionStorage.setItem('galleryScroll', e.currentTarget.scrollTop.toString());
   };
-
-  // Parse Key Constraint to root Pitch Class (0-11)
-  const rootObj = useMemo(() => {
-      let pitchClass = 0;
-      let useFlats = false;
-      const keyName = keyConstraint.split(' ')[0];
-      if (NOTES_FLAT.includes(keyName)) {
-          pitchClass = NOTES_FLAT.indexOf(keyName);
-          useFlats = true;
-      } else if (NOTES_SHARP.includes(keyName)) {
-          pitchClass = NOTES_SHARP.indexOf(keyName);
-          useFlats = false;
-      }
-      if (keyName === 'F') useFlats = true;
-      return { pitchClass, useFlats };
-  }, [keyConstraint]);
-
-  const stringShapes = [5, 4, 3, 2]; // Usually shapes are mostly from E (5), A (4), D (3), G (2) strings
 
   return (
     <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-white text-slate-900 font-sans select-none">
-      
-      {/* SIDEBAR */}
       <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-r border-slate-200 flex flex-col p-6 gap-8 shrink-0">
         <div>
           <h1 className="text-2xl font-black tracking-tighter uppercase">
@@ -83,8 +90,8 @@ export const GalleryMode: React.FC = () => {
           <label className="text-xs font-bold uppercase text-slate-500 tracking-wider cursor-pointer select-none" htmlFor="diatonicToggle">
             Show Diatonic Context
           </label>
-          <input 
-            type="checkbox" 
+          <input
+            type="checkbox"
             id="diatonicToggle"
             checked={showDiatonic}
             onChange={(e) => setShowDiatonic(e.target.checked)}
@@ -92,133 +99,146 @@ export const GalleryMode: React.FC = () => {
           />
         </div>
 
-        {/* LEGEND NOW INTEGRATED IN RIGHT SIDEBAR */}
+        <div className="border-t border-slate-200 pt-4">
+          <div className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Chord List</div>
+          <div className="max-h-[420px] overflow-y-auto border border-slate-200 rounded bg-white p-1 flex flex-col gap-1">
+            {orderedChordDefs.map((def) => (
+              <button
+                key={def.quality}
+                onClick={() => scrollToQuality(def.quality)}
+                className="text-left text-xs font-bold px-2 py-1 rounded hover:bg-blue-50 text-slate-700"
+              >
+                {def.quality}
+              </button>
+            ))}
+          </div>
+        </div>
       </aside>
 
-      {/* MAIN GALLERY */}
       <main ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 h-full overflow-y-auto flex flex-col py-1 p-4 lg:p-8 gap-4 min-w-0 bg-slate-100/50">
-          <div className="w-full overflow-x-auto bg-white rounded border border-slate-200 shadow-sm">
-            <table className="w-full text-left border-collapse min-w-[800px]">
-                <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                        <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider sticky left-0 bg-slate-50 z-10 shadow-[1px_0_0_rgba(226,232,240,1)]">Quality</th>
-                        {stringShapes.map(str => (
-                            <th key={str} className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">
-                                Str {str+1} Root
-                            </th>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                    {CHORD_DICTIONARY.map(def => {
-                        const diatonicOptions = CHORD_QUALITY_DIATONIC_MAP[def.quality] || [];
-                        const hasDiatonic = diatonicOptions.length > 0;
-                        const activeDiatonic = selectedDiatonic[def.quality] || diatonicOptions[0];
-                        let offsetFromKey = 0;
-                        
-                        if (showDiatonic && hasDiatonic && DIATONIC_INTERVALS[activeDiatonic] !== undefined) {
-                           offsetFromKey = DIATONIC_INTERVALS[activeDiatonic];
-                        }
-                        
-                        const actualRootPitch = (rootObj.pitchClass + offsetFromKey) % 12;
-                        const actualRootName = getNoteNameFromPitchClass(actualRootPitch, rootObj.useFlats);
+        <div className="w-full overflow-x-auto bg-white rounded border border-slate-200 shadow-sm">
+          <table className="w-full text-left border-collapse min-w-[800px]">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider sticky left-0 bg-slate-50 z-10 shadow-[1px_0_0_rgba(226,232,240,1)]">Quality</th>
+                {stringShapes.map((str) => (
+                  <th key={str} className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">
+                    Str {str + 1} Root
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {orderedChordDefs.map((def) => {
+                const diatonicOptions = CHORD_QUALITY_DIATONIC_MAP[def.quality] || [];
+                const hasDiatonic = diatonicOptions.length > 0;
+                const activeDiatonic = selectedDiatonic[def.quality] || diatonicOptions[0];
+                const offsetFromKey = showDiatonic && hasDiatonic && DIATONIC_INTERVALS[activeDiatonic] !== undefined
+                  ? DIATONIC_INTERVALS[activeDiatonic]
+                  : 0;
 
-                        return (
-                          <tr key={def.quality} data-quality={def.quality} className="hover:bg-slate-50">
-                              <td className="p-4 font-bold text-slate-700 sticky left-0 bg-inherit z-10 shadow-[1px_0_0_rgba(226,232,240,1)] bg-white align-middle">
-                                  <div className="flex flex-col gap-1">
-                                      <span className="whitespace-nowrap">
-                                        {showDiatonic && hasDiatonic ? <span className="text-blue-600 mr-1">{actualRootName}</span> : null}
-                                        {def.quality}
-                                      </span>
-                                      
-                                      {showDiatonic && (
-                                        diatonicOptions.length > 1 ? (
-                                           <div className="flex flex-col gap-1 mt-1">
-                                             {diatonicOptions.map(d => (
-                                               <button
-                                                 key={d}
-                                                 onClick={() => setSelectedDiatonic({...selectedDiatonic, [def.quality]: d})}
-                                                 className={`text-[10px] uppercase font-bold tracking-widest px-2 py-1 rounded border transition-colors ${activeDiatonic === d ? 'bg-blue-600 border-blue-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-blue-50'}`}
-                                               >
-                                                 {d}
-                                               </button>
-                                             ))}
-                                           </div>
-                                        ) : diatonicOptions.length === 1 ? (
-                                           <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold border border-slate-200 bg-slate-50 px-2 flex items-center justify-center py-1 rounded mt-1">
-                                             {diatonicOptions[0]}
-                                           </span>
-                                        ) : (
-                                           <span className="text-[10px] text-slate-400 italic mt-1 py-1 flex items-center">Non-diatonic</span>
-                                        )
-                                      )}
-                                  </div>
-                              </td>
-                              {stringShapes.map(str => {
-                                  const shape = def.shapes.find(s => s.rootString === str);
-                                  if (!shape) return <td key={str} className="p-4 text-center text-slate-300">-</td>;
+                const actualRootPitch = (rootObj.pitchClass + offsetFromKey) % 12;
+                const actualRootName = getNoteNameFromPitchClass(actualRootPitch, notationUsesFlats);
 
-                                  const stringOpenPitch = TUNING[shape.rootString];
-                                  let rootFret = (actualRootPitch - (stringOpenPitch % 12) + 12) % 12;
-                                  
-                                  // Ensure plausibility: lowest note cannot be negative 
-                                  let minFretInShape = Math.min(...shape.offsets.map(o => rootFret + o.offset));
-                                  while (minFretInShape < 0) {
-                                      rootFret += 12;
-                                      minFretInShape += 12;
-                                  }
+                return (
+                  <tr key={def.quality} data-quality={def.quality} className="hover:bg-slate-50">
+                    <td className="p-4 font-bold text-slate-700 sticky left-0 z-10 shadow-[1px_0_0_rgba(226,232,240,1)] bg-white align-middle">
+                      <div className="flex flex-col gap-1">
+                        <span className="whitespace-nowrap">
+                          {showDiatonic && hasDiatonic ? <span className="text-blue-600 mr-1">{actualRootName}</span> : null}
+                          {def.quality}
+                        </span>
 
-                                  if (rootFret <= 2) rootFret += 12; // Push up to avoid too many ledger lines if desired
+                        {showDiatonic && (
+                          diatonicOptions.length > 1 ? (
+                            <div className="flex flex-col gap-1 mt-1">
+                              {diatonicOptions.map((d) => (
+                                <button
+                                  key={d}
+                                  onClick={() => setSelectedDiatonic({ ...selectedDiatonic, [def.quality]: d })}
+                                  className={`text-[10px] font-bold tracking-widest px-2 py-1 rounded border transition-colors ${activeDiatonic === d ? 'bg-blue-600 border-blue-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-blue-50'}`}
+                                >
+                                  {d}
+                                </button>
+                              ))}
+                            </div>
+                          ) : diatonicOptions.length === 1 ? (
+                            <span className="text-[10px] tracking-widest text-slate-500 font-bold border border-slate-200 bg-slate-50 px-2 flex items-center justify-center py-1 rounded mt-1">
+                              {diatonicOptions[0]}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic mt-1 py-1 flex items-center">Non-diatonic</span>
+                          )
+                        )}
+                      </div>
+                    </td>
+                    {stringShapes.map((str) => {
+                      const shape = def.shapes.find((s) => s.rootString === str);
+                      if (!shape) {
+                        return <td key={str} className="p-4 text-center text-slate-300">-</td>;
+                      }
 
-                                  const pitches = shape.offsets.map(o => TUNING[o.string] + rootFret + o.offset);
-                                  const colors = shape.offsets.map(o => getIntervalHexColor(o.interval || '1'));
+                      const stringOpenPitch = TUNING[shape.rootString];
+                      let rootFret = (actualRootPitch - (stringOpenPitch % 12) + 12) % 12;
 
-                                  const highestPitch = pitches.length > 0 ? Math.max(...pitches) : 0;
-                                  const SHEET_MAX_PITCH = 77; // F5 - begin zooming only above this pitch
-                                  const zoomSemitones = highestPitch > SHEET_MAX_PITCH ? highestPitch - SHEET_MAX_PITCH : 0;
+                      let minFretInShape = Math.min(...shape.offsets.map((o) => rootFret + o.offset));
+                      while (minFretInShape < 0) {
+                        rootFret += 12;
+                        minFretInShape += 12;
+                      }
 
-                                  const handleCellClick = () => {
-                                      const params = new URLSearchParams(window.location.search);
-                                      params.set('tab', 'sandbox');
-                                      params.set('quality', def.quality);
-                                      params.set('rootString', str.toString());
-                                      params.set('fretOffset', rootFret.toString());
-                                      params.delete('key');
-                                      window.history.pushState({}, '', '?' + params.toString());
-                                      window.dispatchEvent(new Event('popstate'));
-                                  };
+                      if (rootFret <= 2) {
+                        rootFret += 12;
+                      }
 
-                                  return (
-                                      <td key={str} className="p-2 text-center align-middle transform scale-90 origin-center">
-                                          <div 
-                                            onClick={handleCellClick}
-                                            className="cursor-pointer border border-transparent hover:border-blue-300 hover:bg-blue-50/50 hover:shadow-sm rounded-lg p-2 transition-all"
-                                            title={`Open ${actualRootName} ${def.quality} (String ${str+1}) in Sandbox`}
-                                          >
-                                            <SheetMusic 
-                                              notes={pitches} 
-                                              colors={colors} 
-                                              gameMode="SANDBOX" 
-                                              useFlats={rootObj.useFlats} 
-                                              zoomSemitones={zoomSemitones}
-                                            />
-                                          </div>
-                                      </td>
-                                  );
-                              })}
-                          </tr>
-                        );
+                      const pitches = shape.offsets.map((o) => TUNING[o.string] + rootFret + o.offset);
+                      const colors = shape.offsets.map((o) => useGalleryColors ? getIntervalHexColor(o.interval || '1') : '#111111');
+
+                      const highestPitch = pitches.length > 0 ? Math.max(...pitches) : 0;
+                      const zoomSemitones = highestPitch > 77 ? highestPitch - 77 : 0;
+
+                      const handleCellClick = () => {
+                        const params = new URLSearchParams(window.location.search);
+                        params.set('tab', 'sandbox');
+                        params.set('quality', def.quality);
+                        params.set('rootString', str.toString());
+                        params.set('fretOffset', rootFret.toString());
+                        params.delete('key');
+                        window.history.pushState({}, '', `?${params.toString()}`);
+                        window.dispatchEvent(new Event('popstate'));
+                      };
+
+                      return (
+                        <td key={str} className="p-2 text-center align-middle transform scale-90 origin-center">
+                          <div
+                            onClick={handleCellClick}
+                            className="cursor-pointer border border-transparent hover:border-blue-300 hover:bg-blue-50/50 hover:shadow-sm rounded-lg p-2 transition-all"
+                            title={`Open ${actualRootName} ${def.quality} (String ${str + 1}) in Sandbox`}
+                          >
+                            <SheetMusic
+                              notes={pitches}
+                              colors={colors}
+                              gameMode="SANDBOX"
+                              useFlats={notationUsesFlats}
+                              keySignature={rootObj.renderableKeyName}
+                              suppressDiatonicAccidentals
+                              zoomSemitones={zoomSemitones}
+                            />
+                          </div>
+                        </td>
+                      );
                     })}
-                </tbody>
-            </table>
-          </div>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </main>
 
       <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-l border-slate-200 flex flex-col shrink-0 p-6">
         <LegendPanel variant="large" />
       </aside>
-
     </div>
   );
 };

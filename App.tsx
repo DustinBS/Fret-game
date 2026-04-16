@@ -4,17 +4,38 @@ import FretboardGame from './src/components/FretboardGame';
 import SandboxMode from './src/components/SandboxMode';
 import ChordQuizMode from './src/components/ChordQuizMode';
 import GalleryMode from './src/components/GalleryMode';
+import VisualArchetypeMode from './src/components/VisualArchetypeMode';
+import { KEY_CONSTRAINT_OPTIONS, getKeySignatureInfo } from './src/utils/musicTheory';
 
 function App() {
-  const [activeTab, setActiveTabState] = useState<'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY'>('TRAINER');
+  const [activeTab, setActiveTabState] = useState<'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY' | 'VISUAL_ARCHETYPE'>('TRAINER');
   const [globalKey, setGlobalKey] = useGlobalKeyConstraint('C');
+  const [useGalleryColors, setUseGalleryColors] = useState<boolean>(() => {
+    return localStorage.getItem('fret-gallery-colors') !== 'off';
+  });
+  const galleryKeyInfo = getKeySignatureInfo(globalKey);
+  const showGalleryContext = activeTab === 'GALLERY' || activeTab === 'VISUAL_ARCHETYPE';
+
+  useEffect(() => {
+    localStorage.setItem('fret-gallery-colors', useGalleryColors ? 'on' : 'off');
+  }, [useGalleryColors]);
 
   useEffect(() => {
     const handleLocationChange = () => {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get('tab')?.toUpperCase();
-      if (tab && ['TRAINER', 'SANDBOX', 'QUIZ', 'GALLERY'].includes(tab)) {
-        setActiveTabState(tab as any);
+      if (!tab) {
+        setActiveTabState('TRAINER');
+        return;
+      }
+
+      if (tab === 'VISUAL' || tab === 'VISUALARCHETYPE') {
+        setActiveTabState('VISUAL_ARCHETYPE');
+        return;
+      }
+
+      if (['TRAINER', 'SANDBOX', 'QUIZ', 'GALLERY'].includes(tab)) {
+        setActiveTabState(tab as 'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY');
       } else {
         setActiveTabState('TRAINER');
       }
@@ -25,9 +46,9 @@ function App() {
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
-  const setActiveTab = (tab: 'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY') => {
+  const setActiveTab = (tab: 'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY' | 'VISUAL_ARCHETYPE') => {
     const params = new URLSearchParams(window.location.search);
-    params.set('tab', tab.toLowerCase());
+    params.set('tab', tab === 'VISUAL_ARCHETYPE' ? 'visualarchetype' : tab.toLowerCase());
     window.history.pushState({}, '', '?' + params.toString());
     setActiveTabState(tab);
     window.dispatchEvent(new Event('popstate'));
@@ -61,27 +82,54 @@ function App() {
         >
           Gallery
         </button>
+        <button 
+          onClick={() => setActiveTab('VISUAL_ARCHETYPE')}
+          className={`text-sm font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${activeTab === 'VISUAL_ARCHETYPE' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-200'}`}
+        >
+          Visual Archetype
+        </button>
 
         <div className="flex-1" /> {/* Spacer */}
         
         <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Key Constraint:</span>
+            {showGalleryContext && (
+              <div className="flex items-center gap-1 text-xs font-bold tracking-wider text-slate-500">
+                <span className="uppercase">Current Key:</span>
+                {galleryKeyInfo.keyName !== galleryKeyInfo.renderableKeyName ? (
+                  <>
+                    <span className="line-through text-slate-400">{galleryKeyInfo.keyName}</span>
+                    <span className="text-blue-700">{galleryKeyInfo.renderableKeyName}</span>
+                  </>
+                ) : (
+                  <span className="text-blue-700">{galleryKeyInfo.keyName}</span>
+                )}
+              </div>
+            )}
+            <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Gallery Key:</span>
             <select 
               value={globalKey} 
               onChange={(e) => setGlobalKey(e.target.value)} 
               className="bg-white border border-slate-200 text-slate-700 px-2 py-1 rounded text-xs font-bold shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[60px]"
             >
-              {['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'Db', 'Ab', 'Eb', 'Bb', 'F'].map(k => (
+              {KEY_CONSTRAINT_OPTIONS.map(k => (
                 <option key={k} value={k}>{k}</option>
               ))}
             </select>
+            <button
+              onClick={() => setUseGalleryColors(prev => !prev)}
+              aria-pressed={useGalleryColors}
+              className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wider border transition-colors ${useGalleryColors ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'}`}
+            >
+              Gallery Colors
+            </button>
         </div>
       </nav>
 
       {activeTab === 'TRAINER' && <FretboardGame />}
       {activeTab === 'SANDBOX' && <SandboxMode />}
       {activeTab === 'QUIZ' && <ChordQuizMode />}
-      {activeTab === 'GALLERY' && <GalleryMode />}
+      {activeTab === 'GALLERY' && <GalleryMode keyConstraint={globalKey} setKeyConstraint={setGlobalKey} useGalleryColors={useGalleryColors} />}
+      {activeTab === 'VISUAL_ARCHETYPE' && <VisualArchetypeMode keyConstraint={globalKey} useGalleryColors={useGalleryColors} />}
     </div>
   );
 }

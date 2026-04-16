@@ -2,6 +2,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Renderer, Stave, StaveNote, Accidental, Formatter, Voice } from 'vexflow';
 import { SHEET_WIDTH, SHEET_HEIGHT, VIEWBOX_BOTTOM_PAD, VIEWBOX_UNITS_PER_SEMITONE, MAX_EXTRA_TOP_UNITS } from './sheetMusicConfig';
+import { getKeySignatureLetterAccidentals, getRenderableKeySignature } from '../utils/musicTheory';
 
 const STAVE_X = 10;
 const STAVE_Y = 0;
@@ -13,6 +14,8 @@ interface SheetMusicProps {
   gameMode: 'WINDOW' | 'OCTAVE' | 'CHORD' | 'SANDBOX' | string;
   useFlats: boolean;
   zoomSemitones?: number;
+  keySignature?: string;
+  suppressDiatonicAccidentals?: boolean;
 }
 
 const SheetMusic: React.FC<SheetMusicProps> = ({
@@ -20,7 +23,9 @@ const SheetMusic: React.FC<SheetMusicProps> = ({
   colors,
   gameMode,
   useFlats,
-  zoomSemitones
+  zoomSemitones,
+  keySignature,
+  suppressDiatonicAccidentals = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -33,8 +38,16 @@ const SheetMusic: React.FC<SheetMusicProps> = ({
     renderer.resize(SHEET_WIDTH, SHEET_HEIGHT);
     const context = renderer.getContext();
 
+    const renderableKeySignature = keySignature ? getRenderableKeySignature(keySignature) : null;
+    const keySignatureAccidentals = (renderableKeySignature && suppressDiatonicAccidentals)
+      ? getKeySignatureLetterAccidentals(renderableKeySignature)
+      : {};
+
     const stave = new Stave(STAVE_X, STAVE_Y, STAVE_WIDTH);
     stave.addClef('treble', 'default', '8vb');
+    if (renderableKeySignature) {
+      stave.addKeySignature(renderableKeySignature);
+    }
     stave.setContext(context).draw();
 
     interface NoteData {
@@ -61,18 +74,52 @@ const SheetMusic: React.FC<SheetMusicProps> = ({
       const semitone = renderMidi % 12;
 
       let noteLetter = '';
-      let accidental = null;
+      let accidental: string | null = null;
 
       if (useFlats) {
-         const flatNames = ['c', 'd', 'd', 'e', 'e', 'f', 'g', 'g', 'a', 'a', 'b', 'b'];
-         const isFlat = [1, 3, 6, 8, 10].includes(semitone);
-         noteLetter = flatNames[semitone];
-         if (isFlat) accidental = 'b';
+         const flatNotes: Array<{ letter: string; accidental: string | null }> = [
+           { letter: 'c', accidental: null },
+           { letter: 'd', accidental: 'b' },
+           { letter: 'd', accidental: null },
+           { letter: 'e', accidental: 'b' },
+           { letter: 'e', accidental: null },
+           { letter: 'f', accidental: null },
+           { letter: 'g', accidental: 'b' },
+           { letter: 'g', accidental: null },
+           { letter: 'a', accidental: 'b' },
+           { letter: 'a', accidental: null },
+           { letter: 'b', accidental: 'b' },
+           { letter: 'b', accidental: null },
+         ];
+         noteLetter = flatNotes[semitone].letter;
+         accidental = flatNotes[semitone].accidental;
       } else {
-         const sharpNames = ['c', 'c', 'd', 'd', 'e', 'f', 'f', 'g', 'g', 'a', 'a', 'b'];
-         const isSharp = [1, 3, 6, 8, 10].includes(semitone);
-         noteLetter = sharpNames[semitone];
-         if (isSharp) accidental = '#';
+         const sharpNotes: Array<{ letter: string; accidental: string | null }> = [
+           { letter: 'c', accidental: null },
+           { letter: 'c', accidental: '#' },
+           { letter: 'd', accidental: null },
+           { letter: 'd', accidental: '#' },
+           { letter: 'e', accidental: null },
+           { letter: 'f', accidental: null },
+           { letter: 'f', accidental: '#' },
+           { letter: 'g', accidental: null },
+           { letter: 'g', accidental: '#' },
+           { letter: 'a', accidental: null },
+           { letter: 'a', accidental: '#' },
+           { letter: 'b', accidental: null },
+         ];
+         noteLetter = sharpNotes[semitone].letter;
+         accidental = sharpNotes[semitone].accidental;
+      }
+
+      if (suppressDiatonicAccidentals && renderableKeySignature) {
+        const keySigAccidental = keySignatureAccidentals[noteLetter.toUpperCase()] ?? null;
+
+        if (accidental && keySigAccidental === accidental) {
+          accidental = null;
+        } else if (!accidental && keySigAccidental) {
+          accidental = 'n';
+        }
       }
 
       const key = `${noteLetter}/${octave}`;
@@ -124,7 +171,7 @@ const SheetMusic: React.FC<SheetMusicProps> = ({
       svg.style.display = 'block';
     }
 
-    }, [notes, colors, gameMode, useFlats, zoomSemitones]);
+    }, [notes, colors, gameMode, useFlats, zoomSemitones, keySignature, suppressDiatonicAccidentals]);
 
   return (
     <div

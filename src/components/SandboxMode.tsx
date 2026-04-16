@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSandbox } from '../hooks/useSandbox';
 import { Fretboard, type FretMarker } from './Fretboard';
 import SheetMusic from './SheetMusic';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
-import { getIntervalColor, getIntervalHexColor, getNoteName, TUNING } from '../utils/musicTheory';
+import { getIntervalColor, getIntervalHexColor, getKeySignatureInfo, getNoteName, TUNING } from '../utils/musicTheory';
 import { useHistory, HistoryPanel } from './History';
 import { LegendPanel } from './LegendPanel';
+import { useGlobalKeyConstraint } from '../hooks/useGlobalKey';
 
 const SandboxMode: React.FC = () => {
   const {
@@ -23,6 +24,7 @@ const SandboxMode: React.FC = () => {
   } = useSandbox();
 
   const { history, addHistory, clearHistory } = useHistory<any>('sandboxHistory');
+  const [keyConstraint] = useGlobalKeyConstraint('C');
 
   const [search, setSearch] = useState('');
 
@@ -82,11 +84,36 @@ const SandboxMode: React.FC = () => {
   const SHEET_MAX_PITCH = 77; // F5 - begin zooming only above this pitch
   const zoomSemitones = highestPitch > SHEET_MAX_PITCH ? highestPitch - SHEET_MAX_PITCH : 0;
 
+  const useFlatsForLabels = useMemo(() => {
+    const selectedChordName = analyzedChords[selectedChordIndex]?.name ?? '';
+    const rootAccidental = selectedChordName.match(/^([A-G])([b#]?)/)?.[2];
+
+    if (rootAccidental === '#') {
+      return false;
+    }
+    if (rootAccidental === 'b') {
+      return true;
+    }
+
+    const intervals = clickedFrets.map(p => p.interval ?? '');
+    const hasSharpIntervals = intervals.some(interval => interval.includes('#'));
+    const hasFlatIntervals = intervals.some(interval => interval.includes('b'));
+
+    if (hasSharpIntervals && !hasFlatIntervals) {
+      return false;
+    }
+    if (hasFlatIntervals && !hasSharpIntervals) {
+      return true;
+    }
+
+    return getKeySignatureInfo(keyConstraint).useFlats;
+  }, [analyzedChords, selectedChordIndex, clickedFrets, keyConstraint]);
+
   // Pre-calculate notes correctly ordered by pitch for the bottom row
   const sortedNotes = [...clickedFrets]
     .map(p => {
       const pitch = p.stringIndex >= 0 ? TUNING[p.stringIndex] + p.fret : 0;
-      return { ...p, pitch, ...getNoteName(pitch, true) };
+      return { ...p, pitch, ...getNoteName(pitch, useFlatsForLabels) };
     })
     .sort((a, b) => a.pitch - b.pitch);
 
@@ -153,7 +180,7 @@ const SandboxMode: React.FC = () => {
                 notes={activePitches} 
                 colors={clickedFrets.map(p => p.interval ? getIntervalHexColor(p.interval) : '#2563eb')} 
                 gameMode="SANDBOX" 
-                useFlats={true}
+                useFlats={useFlatsForLabels}
                 zoomSemitones={zoomSemitones}
               />
             </div>

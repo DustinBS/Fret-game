@@ -1,126 +1,46 @@
 export const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
-export const FORMULA_TO_CHORD: Record<string, string[]> = {
-  "0,2,4,7,9,10": [
-    "13"
-  ],
-  "0,4,7,10": [
-    "7"
-  ],
-  "0,5,7,10": [
-    "7sus4"
-  ],
-  "0,2,4,7,10": [
-    "9",
-    "13"
-  ],
-  "0,4,8": [
-    "aug"
-  ],
-  "0,4,8,10": [
-    "aug7"
-  ],
-  "0,3,6": [
-    "dim"
-  ],
-  "0,3,6,9": [
-    "dim7"
-  ],
-  "0,4,7": [
-    "maj"
-  ],
-  "0,2,4,7,9,11": [
-    "maj13"
-  ],
-  "0,4,7,9": [
-    "maj6"
-  ],
-  "0,4,7,11": [
-    "maj7"
-  ],
-  "0,4,6,7,11": [
-    "maj7#11"
-  ],
-  "0,2,4,7,11": [
-    "maj9"
-  ],
-  "0,3,7": [
-    "min"
-  ],
-  "0,3,5,7,10": [
-    "min11",
-    "min13"
-  ],
-  "0,3,5,6,10": [
-    "min11(b5)"
-  ],
-  "0,3,5,7,9,10": [
-    "min13"
-  ],
-  "0,3,7,9": [
-    "min6"
-  ],
-  "0,3,7,10": [
-    "min7",
-    "min(b13)"
-  ],
-  "0,3,6,10": [
-    "min7b5"
-  ],
-  "0,3,7,8,10": [
-    "min7(b13)",
-    "minb6",
-    "min(b13)"
-  ],
-  "0,2,3,7,10": [
-    "min9"
-  ],
-  "0,2,7": [
-    "sus2"
-  ],
-  "0,5,7": [
-    "sus4"
-  ],
-  "0,4,7,9,10": [
-    "13"
-  ],
-  "0,2,4,9,10": [
-    "13"
-  ],
-  "0,2,4,10": [
-    "9"
-  ],
-  "0,2,4,11": [
-    "maj13"
-  ],
-  "0,4,7,9,11": [
-    "maj13"
-  ],
-  "0,2,4,9,11": [
-    "maj13"
-  ],
-  "0,6,7,11": [
-    "maj7#11"
-  ],
-  "0,2,7,11": [
-    "maj9"
-  ],
-  "0,3,5,10": [
-    "min11"
-  ],
-  "0,3,7,9,10": [
-    "min13"
-  ],
-  "0,3,5,9,10": [
-    "min13"
-  ],
-  "0,2,3,10": [
-    "min9"
-  ],
-  "0,3,7,8": [
-    "minb6"
-  ]
-};
+export interface Template { qualities: string[]; req: number[]; opt: number[]; }
+
+export const TEMPLATES: Template[] = [
+  // Triads
+  { qualities: ['maj'], req: [0,4], opt: [7] },
+  { qualities: ['min'], req: [0,3], opt: [7] },
+  { qualities: ['dim'], req: [0,3,6], opt: [] },
+  { qualities: ['aug'], req: [0,4,8], opt: [] },
+  { qualities: ['sus2'], req: [0,2], opt: [7] },
+  { qualities: ['sus4'], req: [0,5], opt: [7] },
+
+  // 7ths
+  { qualities: ['maj7'], req: [0,4,11], opt: [7] },
+  { qualities: ['min7'], req: [0,3,10], opt: [7] },
+  { qualities: ['7'], req: [0,4,10], opt: [7] },
+  { qualities: ['dim7'], req: [0,3,6,9], opt: [] },
+  { qualities: ['min7b5', 'half-dim'], req: [0,3,6,10], opt: [] },
+  { qualities: ['maj6'], req: [0,4,9], opt: [7] },
+  { qualities: ['min6'], req: [0,3,9], opt: [7] },
+  
+  // 7sus4
+  { qualities: ['7sus4'], req: [0,5,10], opt: [7] },
+  { qualities: ['aug7'], req: [0,4,8,10], opt: [] },
+
+  // Extensions
+  { qualities: ['maj9'], req: [0,11,2], opt: [4,7] },
+  { qualities: ['min9'], req: [0,3,10,2], opt: [7] },
+  { qualities: ['9'], req: [0,10,2], opt: [4,7] },
+
+  { qualities: ['maj13'], req: [0,11,9], opt: [4,7,2,5] }, 
+  { qualities: ['min13'], req: [0,3,10,9], opt: [7,2,5] }, 
+  { qualities: ['13'], req: [0,10,9], opt: [4,7,2,5] }, 
+
+  { qualities: ['min11'], req: [0,3,10,5], opt: [7,2] },
+  { qualities: ['min11(b5)'], req: [0,3,6,10,5], opt: [2] },
+
+  { qualities: ['minb6'], req: [0,3,8], opt: [7] },
+  { qualities: ['min(b13)', 'min7(b13)'], req: [0,3,10,8], opt: [7,2,5] },
+
+  { qualities: ['maj7#11'], req: [0,11,6], opt: [4,7,2] },
+];
 
 export interface AnalyzedChordResult { name: string; rootMidi: number; bassMidi: number; intervals: number[]; }
 
@@ -129,43 +49,43 @@ export function analyzeChord(midiPitches: number[]): AnalyzedChordResult[] {
     return [];
   }
 
-  // 3. The lowest pitch in midiPitches is the bass note.
   const lowestPitch = Math.min(...midiPitches);
   const bassPitchClass = lowestPitch % 12;
   const bassNoteName = NOTE_NAMES[bassPitchClass];
 
-  // 2. Deduplicate pitch classes (0-11) from the midiPitches.
   const pitchClasses = Array.from(new Set(midiPitches.map((p) => p % 12)));
-  
   const recognizedChords: AnalyzedChordResult[] = [];
 
-  // 4. Iterate over every pitch class present as a potential root.
   for (const root of pitchClasses) {
     const rootName = NOTE_NAMES[root];
-
-    // 5. For each potential root, map the remaining pitch classes to semitone intervals (0-11) relative to that root.
     const intervals = pitchClasses.map((pc) => (pc - root + 12) % 12);
-    
-    // Sort intervals conceptually building the chord
     intervals.sort((a, b) => a - b);
-    
-    const formulaString = intervals.join(",");
 
-    // 6. Look up those intervals (sorted) in a dictionary of well-known chord formulas
-    const chordTypes = FORMULA_TO_CHORD[formulaString];
-
-    if (chordTypes) {
-      for (const chordType of chordTypes) {
-        // 7. Format the string: e.g. `C maj7`. If the bass note is NOT the root note, format it as a slash chord: `C maj7 / G`.
-        let chordName = `${rootName} ${chordType}`;
-        if (bassPitchClass !== root) {
-          chordName += ` / ${bassNoteName}`;
+    // Rule matching
+    for (const t of TEMPLATES) {
+      const hasAllReq = t.req.every(r => intervals.includes(r));
+      const noExtra = intervals.every(i => t.req.includes(i) || t.opt.includes(i));
+      
+      if (hasAllReq && noExtra) {
+        for (const chordType of t.qualities) {
+          let chordName = `${rootName} ${chordType}`;
+          if (bassPitchClass !== root) {
+            chordName += ` / ${bassNoteName}`;
+          }
+          if (!recognizedChords.find(c => c.name === chordName)) {
+            recognizedChords.push({ name: chordName, rootMidi: root, bassMidi: bassPitchClass, intervals });
+          }
         }
-        recognizedChords.push({ name: chordName, rootMidi: root, bassMidi: bassPitchClass, intervals });
       }
     }
   }
 
-  // 8. Return an array of all possible recognized names
+  // Sort results to prioritize those with matching bass (i.e. not slash chords)
+  recognizedChords.sort((a, b) => {
+    const aIsSlash = a.bassMidi !== a.rootMidi;
+    const bIsSlash = b.bassMidi !== b.rootMidi;
+    return (aIsSlash === bIsSlash) ? 0 : aIsSlash ? 1 : -1;
+  });
+
   return recognizedChords;
 }

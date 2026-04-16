@@ -60,10 +60,31 @@ export const getIntervalHexColor = (interval: string) => {
 };
 
 export const semitoneToIntervalString = (semitone: number, chordName?: string): string => {
-   const isExt = chordName && (chordName.includes('9') || chordName.includes('11') || chordName.includes('13'));
-   if (semitone === 2 && isExt) return '9';
-   if (semitone === 5 && (chordName?.includes('11') || chordName?.includes('13'))) return '11';
-   if (semitone === 9 && chordName?.includes('13')) return '13';
-   const map: Record<number, string> = { 0: '1', 1: 'b2', 2: '2', 3: 'b3', 4: '3', 5: '4', 6: 'b5', 7: '5', 8: 'b6', 9: '6', 10: 'b7', 11: '7' }; 
-   return map[semitone] || '?';
+   const c = (chordName || '').toLowerCase();
+   
+   if (semitone === 0) return '1';
+   if (semitone === 1) return c.includes('b9') ? 'b9' : 'b2';
+   if (semitone === 2) return (c.includes('9') || c.includes('11') || c.includes('13')) ? '9' : '2';
+   if (semitone === 3) return c.includes('#9') ? '#9' : 'b3';
+   if (semitone === 4) return '3';
+   if (semitone === 5) return (c.includes('11') || c.includes('13')) ? '11' : '4';
+   if (semitone === 6) {
+       if (c.includes('#11')) return '#11';
+       if (c.includes('#4')) return '#4';
+       return 'b5';
+   }
+   if (semitone === 7) return '5';
+   if (semitone === 8) {
+       if (c.includes('#5') || c.includes('aug')) return '#5';
+       if (c.includes('b13')) return 'b13';
+       return 'b6';
+   }
+   if (semitone === 9) {
+       if (c.includes('13')) return '13';
+       if (c.includes('dim7')) return 'bb7';
+       return '6';
+   }
+   if (semitone === 10) return 'b7';
+   if (semitone === 11) return '7';
+   return '?';
 };

@@ -26,8 +26,31 @@ export const useSandbox = () => {
     setSelectedChordIndex(0);
   };
 
-  const setChordShape = (definition: any, shape: any, baseFretOffset: number = 0) => {
-    let adjustedBaseFretOffset = baseFretOffset;
+  const setChordShape = (definition: any, shape: any, baseFretOffset?: number) => {
+    // If a base fret wasn't provided, try a small range of base positions (0-12)
+    // and pick one where the analyzer recognizes the same quality. This prevents
+    // showing shapes at open-position pitches that accidentally resolve to other chord types
+    // (e.g. the current minb6 shape showing up as C maj7/E).
+    let chosenBase: number | null = null;
+    if (typeof baseFretOffset === 'number') {
+      chosenBase = baseFretOffset;
+    } else {
+      for (let candidate = 0; candidate <= 12; candidate++) {
+        // compute pitches for this candidate base
+        const candidatePitches = shape.offsets.map((so: any) => TUNING[so.string] + so.offset + candidate);
+        const recognized = analyzeChord(candidatePitches);
+        const matchesQuality = recognized.some((r) => r.name.includes(` ${definition.quality}`) || r.name.includes(` ${definition.quality} /`));
+        if (matchesQuality) {
+          chosenBase = candidate;
+          break;
+        }
+      }
+      if (chosenBase === null) {
+        chosenBase = Math.max(0, -Math.min(...shape.offsets.map((so: any) => so.offset)));
+      }
+    }
+
+    let adjustedBaseFretOffset = chosenBase;
     let minFretInShape = Math.min(...shape.offsets.map((so: any) => so.offset + adjustedBaseFretOffset));
     while (minFretInShape < 0) {
       adjustedBaseFretOffset += 12;

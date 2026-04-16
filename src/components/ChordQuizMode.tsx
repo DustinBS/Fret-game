@@ -18,7 +18,7 @@ export default function ChordQuizMode() {
     setInputRoot,
     inputQuality,
     setInputQuality,
-    
+    inputShape,
     setInputShape,
     
     
@@ -95,7 +95,16 @@ export default function ChordQuizMode() {
 
             <div>
               <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">String Shape</label>
-              
+              <select
+                value={inputShape}
+                onChange={e => setInputShape(e.target.value)}
+                className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none"
+              >
+                 <option value="">Select Root String...</option>
+                 <option value="5">String 6 (E)</option>
+                 <option value="4">String 5 (A)</option>
+                 <option value="3">String 4 (D)</option>
+              </select>
             </div>
 
             {gameState === 'PLAYING' ? (

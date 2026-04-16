@@ -1,6 +1,5 @@
 // src/components/FretboardGame.tsx
 import React from 'react';
-import { useGlobalKeyConstraint } from '../hooks/useGlobalKey';
 import { useFretboardGame } from '../hooks/useFretboardGame';
 import { getNoteName } from '../utils/musicTheory';
 import SheetMusic from './SheetMusic';
@@ -23,7 +22,6 @@ const SAFE_PALETTE = [
 ];
 
 const FretboardGame: React.FC = () => {
-  const [globalKey, setGlobalKey] = useGlobalKeyConstraint('C');
   const {
     targetNotes,
     colorIndices,
@@ -138,7 +136,7 @@ const FretboardGame: React.FC = () => {
         {/* Title & Streak */}
         <div className="flex flex-row lg:flex-col justify-between items-baseline lg:items-start gap-4">
             <div>
-                <div className="flex items-center justify-between gap-1 mb-2"><span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Key: </span><select value={globalKey} onChange={(e) => setGlobalKey(e.target.value)} className="bg-white border border-slate-200 text-slate-700 px-2 py-1 rounded text-xs font-bold shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[60px]">{['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'Db', 'Ab', 'Eb', 'Bb', 'F'].map(k => (<option key={k} value={k}>{k}</option>))}</select></div><h1 className="text-2xl font-black tracking-tighter uppercase">
+                <h1 className="text-2xl font-black tracking-tighter uppercase">
                   Fret<span className="text-slate-400">Focus</span>
                 </h1>
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">

@@ -4,9 +4,10 @@ import { getIntervalHexColor, TUNING, NOTES_FLAT, NOTES_SHARP, getNoteNameFromPi
 import { DIATONIC_INTERVALS, CHORD_QUALITY_DIATONIC_MAP } from '../utils/diatonic';
 import SheetMusic from './SheetMusic';
 import { LegendPanel } from './LegendPanel';
+import { useGlobalKeyConstraint } from '../hooks/useGlobalKey';
 
 export const GalleryMode: React.FC = () => {
-  const [keyConstraint, setKeyConstraintState] = useState('C');
+  const [keyConstraint, setKeyConstraintState] = useGlobalKeyConstraint('C');
   const [showDiatonic, setShowDiatonic] = useState(true);
   const [selectedDiatonic, setSelectedDiatonic] = useState<Record<string, string>>({});
   const scrollContainerRef = useRef<HTMLElement>(null);
@@ -46,13 +47,6 @@ export const GalleryMode: React.FC = () => {
      sessionStorage.setItem('galleryScroll', e.currentTarget.scrollTop.toString());
   };
 
-  const setKeyConstraint = (key: string) => {
-    setKeyConstraintState(key);
-    const params = new URLSearchParams(window.location.search);
-    params.set('key', key);
-    window.history.replaceState({}, '', '?' + params.toString());
-  };
-
   // Parse Key Constraint to root Pitch Class (0-11)
   const rootObj = useMemo(() => {
       let pitchClass = 0;
@@ -83,19 +77,6 @@ export const GalleryMode: React.FC = () => {
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
             Visual Matrix
           </div>
-        </div>
-
-        <div className="flex flex-col gap-4">
-            <label className="text-xs font-bold uppercase text-slate-500 tracking-wider">Key Constraint</label>
-            <select 
-                className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none"
-                value={keyConstraint}
-                onChange={e => setKeyConstraint(e.target.value)}
-            >
-                {Array.from(new Set([...NOTES_FLAT, ...NOTES_SHARP])).sort().map(note => (
-                    <option key={note} value={note}>{note}</option>
-                ))}
-            </select>
         </div>
 
         <div className="flex items-center justify-between border-t border-slate-200 pt-4">

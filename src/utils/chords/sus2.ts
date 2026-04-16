@@ -82,11 +82,6 @@ export const sus2Chord: ChordDefinition = {
           "interval": "5"
         },
         {
-          "string": 1,
-          "offset": 2,
-          "interval": "5"
-        },
-        {
           "string": 0,
           "offset": 2,
           "interval": "2"

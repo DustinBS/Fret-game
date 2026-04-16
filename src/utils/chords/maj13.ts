@@ -74,12 +74,12 @@ export const maj13Chord: ChordDefinition = {
         {
           "string": 1,
           "offset": 2,
-          "interval": "9"
+          "interval": "13"
         },
         {
           "string": 2,
           "offset": 2,
-          "interval": "13"
+          "interval": "11"
         },
         {
           "string": 4,
@@ -95,6 +95,7 @@ export const maj13Chord: ChordDefinition = {
     "5",
     "7",
     "9",
+    "11",
     "13"
   ]
 };

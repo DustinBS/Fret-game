@@ -4,7 +4,38 @@ TODO
 
 # Fretboard Game
 
+[![Deploy Status](https://github.com/DustinBS/Fret-game/actions/workflows/deploy.yml/badge.svg)](https://github.com/DustinBS/Fret-game/actions/workflows/deploy.yml)
+
 https://dustinbs.github.io/Fret-game/
+
+## Redeploy (GitHub Pages)
+
+If you have permission to run workflows for this repository you can manually trigger the deploy workflow from the GitHub Actions UI:
+
+- Actions overview for this repo: https://github.com/DustinBS/Fret-game/actions
+- Common workflow pages (open the page and click "Run workflow" if present):
+    - https://github.com/DustinBS/Fret-game/actions/workflows/deploy.yml
+    - https://github.com/DustinBS/Fret-game/actions/workflows/gh-pages.yml
+    - https://github.com/DustinBS/Fret-game/actions/workflows/pages.yml
+
+Alternatively you can deploy locally (this repo uses `gh-pages`):
+
+```bash
+npm run build
+npm run deploy
+```
+
+Or trigger a workflow via the GitHub Actions API (requires a Personal Access Token with `repo` + `workflow` scopes):
+
+```bash
+curl -X POST \\
+    -H "Accept: application/vnd.github+json" \\
+    -H "Authorization: Bearer $GITHUB_TOKEN" \\
+    https://api.github.com/repos/DustinBS/Fret-game/actions/workflows/deploy.yml/dispatches \\
+    -d '{"ref":"main"}'
+```
+
+Replace the workflow filename and branch as appropriate.
 
 **Goal:** A webapp to gamify sight-reading and fretboard visualization.
 

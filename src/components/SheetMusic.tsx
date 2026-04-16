@@ -1,19 +1,26 @@
 // src/components/SheetMusic.tsx
 import React, { useEffect, useRef } from 'react';
 import { Renderer, Stave, StaveNote, Accidental, Formatter, Voice } from 'vexflow';
+import { SHEET_WIDTH, SHEET_HEIGHT, VIEWBOX_BOTTOM_PAD, VIEWBOX_UNITS_PER_SEMITONE, MAX_EXTRA_TOP_UNITS } from './sheetMusicConfig';
+
+const STAVE_X = 10;
+const STAVE_Y = 0;
+const STAVE_WIDTH = SHEET_WIDTH - 20;
 
 interface SheetMusicProps {
   notes: number[];
   colors: string[];
   gameMode: 'WINDOW' | 'OCTAVE' | 'CHORD' | 'SANDBOX' | string;
   useFlats: boolean;
+  zoomSemitones?: number;
 }
 
 const SheetMusic: React.FC<SheetMusicProps> = ({
   notes,
   colors,
   gameMode,
-  useFlats
+  useFlats,
+  zoomSemitones
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -22,14 +29,11 @@ const SheetMusic: React.FC<SheetMusicProps> = ({
 
     containerRef.current.innerHTML = '';
 
-    const WIDTH = 200;
-    const HEIGHT = 140;
-
     const renderer = new Renderer(containerRef.current, Renderer.Backends.SVG);
-    renderer.resize(WIDTH, HEIGHT);
+    renderer.resize(SHEET_WIDTH, SHEET_HEIGHT);
     const context = renderer.getContext();
 
-    const stave = new Stave(10, 0, WIDTH - 20);
+    const stave = new Stave(STAVE_X, STAVE_Y, STAVE_WIDTH);
     stave.addClef('treble', 'default', '8vb');
     stave.setContext(context).draw();
 
@@ -42,8 +46,16 @@ const SheetMusic: React.FC<SheetMusicProps> = ({
 
     const noteDataList: NoteData[] = notes.map((val, i) => {
       let renderMidi = val;
-      if (gameMode === 'WINDOW') renderMidi = 60 + val;
-      else renderMidi = val + 12;
+      // 'WINDOW' mode passes relative offsets; center them around middle C
+      if (gameMode === 'WINDOW') {
+        renderMidi = 60 + val;
+      } else {
+        // We use a treble clef with 8vb (guitar transcription). VexFlow draws
+        // the written pitch, so to represent sounding guitar pitches we must
+        // write them an octave higher (sounding = written - 12). Thus add +12
+        // to the sounding MIDI to get the written MIDI for rendering.
+        renderMidi = val + 12;
+      }
 
       const octave = Math.floor(renderMidi / 12) - 1;
       const semitone = renderMidi % 12;
@@ -75,32 +87,52 @@ const SheetMusic: React.FC<SheetMusicProps> = ({
 
     noteDataList.sort((a, b) => a.rawVal - b.rawVal);
 
-    if (noteDataList.length === 0) {
-      // Just draw empty stave frame to keep layout steady
-      return;
+    if (noteDataList.length > 0) {
+      const staveNote = new StaveNote({
+        keys: noteDataList.map(n => n.key),
+        duration: "w",
+        autoStem: true,
+      });
+
+      noteDataList.forEach((data, index) => {
+        if (data.accidental) {
+          staveNote.addModifier(new Accidental(data.accidental), index);
+        }
+        staveNote.setKeyStyle(index, { fillStyle: data.color, strokeStyle: data.color });
+      });
+
+      const voice = new Voice({ numBeats: 4, beatValue: 4 });
+      voice.addTickables([staveNote]);
+      new Formatter().joinVoices([voice]).format([voice], STAVE_WIDTH - 30);
+      voice.draw(context, stave);
     }
 
-    const staveNote = new StaveNote({
-      keys: noteDataList.map(n => n.key),
-      duration: "w",
-      autoStem: true,
-    });
+    // Apply zoom by adjusting SVG viewBox instead of scaling the container.
+    // This keeps the viewport window fixed and makes notation gradually smaller.
+    // We always add a tiny bottom pad so low E2 isn't clipped at default zoom.
+    const svg = containerRef.current.querySelector('svg') as SVGSVGElement | null;
+    if (svg) {
+      const semitones = Math.max(0, zoomSemitones ?? 0);
+      const extraTopUnits = Math.min(MAX_EXTRA_TOP_UNITS, semitones * VIEWBOX_UNITS_PER_SEMITONE);
+      const viewBoxY = -extraTopUnits;
+      const viewBoxHeight = SHEET_HEIGHT + extraTopUnits + VIEWBOX_BOTTOM_PAD;
 
-    noteDataList.forEach((data, index) => {
-      if (data.accidental) {
-        staveNote.addModifier(new Accidental(data.accidental), index);
-      }
-      staveNote.setKeyStyle(index, { fillStyle: data.color, strokeStyle: data.color });
-    });
+      svg.setAttribute('viewBox', `0 ${viewBoxY} ${SHEET_WIDTH} ${viewBoxHeight}`);
+      svg.setAttribute('preserveAspectRatio', 'xMidYMax meet');
 
-    const voice = new Voice({ numBeats: 4, beatValue: 4 });
-    voice.addTickables([staveNote]);
-    new Formatter().joinVoices([voice]).format([voice], WIDTH - 50);
-    voice.draw(context, stave);
+      svg.style.overflow = 'visible';
+      svg.style.display = 'block';
+    }
 
-  }, [notes, colors, gameMode, useFlats]);
+    }, [notes, colors, gameMode, useFlats, zoomSemitones]);
 
-  return <div ref={containerRef} className="inline-block" />;
+  return (
+    <div
+      ref={containerRef}
+      className="inline-block"
+      style={{ width: `${SHEET_WIDTH}px`, height: `${SHEET_HEIGHT}px` }}
+    />
+  );
 };
 
 export default SheetMusic;

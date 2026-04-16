@@ -174,6 +174,10 @@ export const GalleryMode: React.FC = () => {
                                   const pitches = shape.offsets.map(o => TUNING[o.string] + rootFret + o.offset);
                                   const colors = shape.offsets.map(o => getIntervalHexColor(o.interval || '1'));
 
+                                  const highestPitch = pitches.length > 0 ? Math.max(...pitches) : 0;
+                                  const SHEET_MAX_PITCH = 77; // F5 - begin zooming only above this pitch
+                                  const zoomSemitones = highestPitch > SHEET_MAX_PITCH ? highestPitch - SHEET_MAX_PITCH : 0;
+
                                   const handleCellClick = () => {
                                       const params = new URLSearchParams(window.location.search);
                                       params.set('tab', 'sandbox');
@@ -193,10 +197,11 @@ export const GalleryMode: React.FC = () => {
                                             title={`Open ${actualRootName} ${def.quality} (String ${str+1}) in Sandbox`}
                                           >
                                             <SheetMusic 
-                                                notes={pitches} 
-                                                colors={colors} 
-                                                gameMode="SANDBOX" 
-                                                useFlats={rootObj.useFlats} 
+                                              notes={pitches} 
+                                              colors={colors} 
+                                              gameMode="SANDBOX" 
+                                              useFlats={rootObj.useFlats} 
+                                              zoomSemitones={zoomSemitones}
                                             />
                                           </div>
                                       </td>

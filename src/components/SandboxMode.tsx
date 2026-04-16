@@ -3,7 +3,7 @@ import { useSandbox } from '../hooks/useSandbox';
 import { Fretboard, type FretMarker } from './Fretboard';
 import SheetMusic from './SheetMusic';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
-import { getIntervalColor, getIntervalHexColor } from '../utils/musicTheory';
+import { getIntervalColor, getIntervalHexColor, getNoteName, TUNING } from '../utils/musicTheory';
 import { useHistory, HistoryPanel } from './History';
 import { LegendPanel } from './LegendPanel';
 
@@ -78,6 +78,18 @@ const SandboxMode: React.FC = () => {
     return "scale-0 group-hover:scale-75 group-hover:bg-blue-300/50 transition-all";
   };
 
+  const highestPitch = activePitches.length > 0 ? Math.max(...activePitches) : 0;
+  const SHEET_MAX_PITCH = 77; // F5 - begin zooming only above this pitch
+  const zoomSemitones = highestPitch > SHEET_MAX_PITCH ? highestPitch - SHEET_MAX_PITCH : 0;
+
+  // Pre-calculate notes correctly ordered by pitch for the bottom row
+  const sortedNotes = [...clickedFrets]
+    .map(p => {
+      const pitch = p.stringIndex >= 0 ? TUNING[p.stringIndex] + p.fret : 0;
+      return { ...p, pitch, ...getNoteName(pitch, true) };
+    })
+    .sort((a, b) => a.pitch - b.pitch);
+
   return (
     <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-white text-slate-900 font-sans select-none">
       
@@ -137,12 +149,13 @@ const SandboxMode: React.FC = () => {
          
          <div className="flex flex-row items-center justify-center min-h-40 w-full gap-8">
             <div className="flex justify-center scale-110 lg:scale-125 origin-center min-w-[200px]">
-               <SheetMusic 
-                  notes={activePitches} 
-                  colors={clickedFrets.map(p => p.interval ? getIntervalHexColor(p.interval) : '#2563eb')} 
-                  gameMode="SANDBOX" 
-                  useFlats={true} 
-               />
+              <SheetMusic 
+                notes={activePitches} 
+                colors={clickedFrets.map(p => p.interval ? getIntervalHexColor(p.interval) : '#2563eb')} 
+                gameMode="SANDBOX" 
+                useFlats={true}
+                zoomSemitones={zoomSemitones}
+              />
             </div>
 
             <div className="flex flex-col items-center min-h-[96px] max-h-[140px] px-2 w-[340px]">
@@ -216,8 +229,24 @@ const SandboxMode: React.FC = () => {
            getGhostClass={getGhostClass}
          />
 
-        {/* Spacer to match Trainer flex distribution */}
-        <div className="mt-6 pointer-events-none opacity-0 select-none py-4 text-xl">_</div>
+         {/* Spacer to match Trainer flex distribution */}
+         <div className="mt-0 opacity-100 flex flex-row gap-2 justify-center py-0 flex-wrap">
+           {sortedNotes.length > 0 ? (
+             sortedNotes.map((n, i) => {
+               const intervalClass = n.interval ? getIntervalColor(n.interval) : 'bg-blue-500 text-white';
+               return (
+               <div 
+                 key={`${n.stringIndex}-${n.fret}-${i}`}
+                 className={`px-3 py-1 font-bold text-sm tracking-wide rounded shadow-sm flex gap-0.5 items-center ${intervalClass}`}
+               >
+                 <span className="mr-2">{n.note}</span>
+                 <span className="text-[10px] opacity-70 mb-1">{n.octave}</span>
+               </div>
+             )})
+           ) : (
+             <div className="pointer-events-none opacity-0 select-none px-3 py-1 text-xl">_</div>
+           )}
+         </div>
       </main>
 
       {/* RIGHT SIDEBAR - HISTORY */}

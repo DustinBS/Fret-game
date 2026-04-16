@@ -6,19 +6,14 @@ import SheetMusic from './SheetMusic';
 import { Fretboard, type FretMarker } from './Fretboard';
 import { useHistory, HistoryPanel } from './History';
 
+// Trainer palette: 6 high-contrast, high-saturation colors for trainer gamemode
 const SAFE_PALETTE = [
-  { name: '1',  bg: 'bg-[#a6cee3]', text: 'text-[#a6cee3]', border: 'border-[#a6cee3]', hex: '#a6cee3' }, // color 1
-  { name: 'b2', bg: 'bg-[#1f78b4]', text: 'text-[#1f78b4]', border: 'border-[#1f78b4]', hex: '#1f78b4' }, // color 2
-  { name: '2',  bg: 'bg-[#b2df8a]', text: 'text-[#b2df8a]', border: 'border-[#b2df8a]', hex: '#b2df8a' }, // color 3
-  { name: 'b3', bg: 'bg-[#33a02c]', text: 'text-[#33a02c]', border: 'border-[#33a02c]', hex: '#33a02c' }, // color 4
-  { name: '3',  bg: 'bg-[#fb9a99]', text: 'text-[#fb9a99]', border: 'border-[#fb9a99]', hex: '#fb9a99' }, // color 5
-  { name: '4',  bg: 'bg-[#e31a1c]', text: 'text-[#e31a1c]', border: 'border-[#e31a1c]', hex: '#e31a1c' }, // color 6
-  { name: 'b5', bg: 'bg-[#fdbf6f]', text: 'text-[#fdbf6f]', border: 'border-[#fdbf6f]', hex: '#fdbf6f' }, // color 7
-  { name: '5',  bg: 'bg-[#ff7f00]', text: 'text-[#ff7f00]', border: 'border-[#ff7f00]', hex: '#ff7f00' }, // color 8
-  { name: 'b6', bg: 'bg-[#cab2d6]', text: 'text-[#cab2d6]', border: 'border-[#cab2d6]', hex: '#cab2d6' }, // color 9
-  { name: '6',  bg: 'bg-[#6a3d9a]', text: 'text-[#6a3d9a]', border: 'border-[#6a3d9a]', hex: '#6a3d9a' }, // color 10
-  { name: 'b7', bg: 'bg-[#ffff99]', text: 'text-[#ffff99]', border: 'border-[#ffff99]', hex: '#ffff99' }, // color 11
-  { name: '7',  bg: 'bg-[#b15928]', text: 'text-[#b15928]', border: 'border-[#b15928]', hex: '#b15928' }, // color 12
+  { name: 'p1', bg: 'bg-[#ef4444]', text: 'text-[#ef4444]', border: 'border-[#ef4444]', hex: '#ef4444' }, // red
+  { name: 'p2', bg: 'bg-[#f97316]', text: 'text-[#f97316]', border: 'border-[#f97316]', hex: '#f97316' }, // orange
+  { name: 'p3', bg: 'bg-[#f59e0b]', text: 'text-[#f59e0b]', border: 'border-[#f59e0b]', hex: '#f59e0b' }, // amber
+  { name: 'p4', bg: 'bg-[#10b981]', text: 'text-[#10b981]', border: 'border-[#10b981]', hex: '#10b981' }, // green
+  { name: 'p5', bg: 'bg-[#3b82f6]', text: 'text-[#3b82f6]', border: 'border-[#3b82f6]', hex: '#3b82f6' }, // blue
+  { name: 'p6', bg: 'bg-[#8b5cf6]', text: 'text-[#8b5cf6]', border: 'border-[#8b5cf6]', hex: '#8b5cf6' }, // purple
 ];
 
 const FretboardGame: React.FC = () => {

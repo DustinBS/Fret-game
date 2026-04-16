@@ -2,6 +2,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { SHEET_WIDTH, SHEET_HEIGHT } from './sheetMusicConfig';
 
 interface SheetMusicProps {
   notes: number[];
@@ -58,8 +59,8 @@ const SheetMusic: React.FC<SheetMusicProps> = ({ notes, colors, gameMode, useFla
             const div = document.getElementById("output");
             const renderer = new VF.Renderer(div, VF.Renderer.Backends.SVG);
 
-            const WIDTH = 150;
-            const HEIGHT = 160;
+            const WIDTH = ${SHEET_WIDTH};
+            const HEIGHT = ${SHEET_HEIGHT};
 
             renderer.resize(WIDTH, HEIGHT);
             const context = renderer.getContext();
@@ -97,7 +98,7 @@ const SheetMusic: React.FC<SheetMusicProps> = ({ notes, colors, gameMode, useFla
   `;
 
   return (
-    <View style={{ width: 150, height: 160, overflow: 'hidden' }}>
+    <View style={{ width: SHEET_WIDTH, height: SHEET_HEIGHT, overflow: 'hidden' }}>
       <WebView
         originWhitelist={['*']}
         source={{ html, baseUrl: '' }}

@@ -48,8 +48,8 @@ export const min_b13_Chord: ChordDefinition = {
         },
         {
           "string": 3,
-          "offset": 2,
-          "interval": "1"
+          "offset": 0,
+          "interval": "b7"
         },
         {
           "string": 2,
@@ -63,8 +63,8 @@ export const min_b13_Chord: ChordDefinition = {
         },
         {
           "string": 1,
-          "offset": 3,
-          "interval": "b7"
+          "offset": 1,
+          "interval": "b13"
         }
       ]
     }

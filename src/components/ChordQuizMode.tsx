@@ -140,8 +140,12 @@ export default function ChordQuizMode() {
           </div>
 
           <div className={`flex flex-col items-center justify-center w-64 min-h-[96px] transition-opacity duration-300 ${gameState === 'REVEALED' ? '(Correct)' : '(Miss)'}`}>
-            <p className="text-3xl font-black text-slate-800 bg-blue-100 px-4 py-2 rounded shadow-sm">{getNoteNameFromPitchClass(quizData.rootPitchClass, quizData.useFlats)} {quizData.quality}</p>
-            <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-2">{STRING_NAMES[quizData.rootString] || `String ${quizData.rootString}`} Shape</p>
+            <p className="text-3xl font-black text-slate-800 bg-blue-100 px-4 py-2 rounded shadow-sm">
+              {getNoteNameFromPitchClass(quizData.rootPitchClass, quizData.useFlats)} {gameState === 'REVEALED' ? quizData.quality : '—'}
+            </p>
+            <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-2">
+              {gameState === 'REVEALED' ? (STRING_NAMES[quizData.rootString] || `String ${quizData.rootString}`) : 'String ?'} Shape
+            </p>
           </div>
         </div>
 

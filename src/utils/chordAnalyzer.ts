@@ -84,6 +84,9 @@ export const FORMULA_TO_CHORD: Record<string, string[]> = {
   "0,4,7,9,10": [
     "13"
   ],
+  "0,2,4,9,10": [
+    "13"
+  ],
   "0,2,4,10": [
     "9"
   ],
@@ -108,8 +111,14 @@ export const FORMULA_TO_CHORD: Record<string, string[]> = {
   "0,3,7,9,10": [
     "min13"
   ],
+  "0,3,5,9,10": [
+    "min13"
+  ],
   "0,2,3,10": [
     "min9"
+  ],
+  "0,3,7,8": [
+    "minb6"
   ]
 };
 

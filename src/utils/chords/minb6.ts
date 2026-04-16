@@ -17,11 +17,6 @@ export const minb6Chord: ChordDefinition = {
           "interval": "5"
         },
         {
-          "string": 2,
-          "offset": 0,
-          "interval": "b7"
-        },
-        {
           "string": 0,
           "offset": 1,
           "interval": "b6"
@@ -47,11 +42,6 @@ export const minb6Chord: ChordDefinition = {
           "interval": "5"
         },
         {
-          "string": 3,
-          "offset": 2,
-          "interval": "1"
-        },
-        {
           "string": 2,
           "offset": 0,
           "interval": "b3"
@@ -63,8 +53,8 @@ export const minb6Chord: ChordDefinition = {
         },
         {
           "string": 0,
-          "offset": -2,
-          "interval": "b7"
+          "offset": 0,
+          "interval": "1"
         }
       ]
     }
@@ -73,7 +63,6 @@ export const minb6Chord: ChordDefinition = {
     "1",
     "b3",
     "5",
-    "b7",
     "b6"
   ]
 };

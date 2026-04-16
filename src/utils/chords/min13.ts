@@ -23,8 +23,8 @@ export const min13Chord: ChordDefinition = {
         },
         {
           "string": 0,
-          "offset": 0,
-          "interval": "5"
+          "offset": 2,
+          "interval": "13"
         },
         {
           "string": 1,

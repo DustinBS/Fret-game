@@ -8,6 +8,7 @@ export const useSandbox = () => {
   const [clickedFrets, setClickedFrets] = useState<FretPosition[]>([]);
   const [selectedChordName, setSelectedChordName] = useState<string>('');
   const [selectedChordIndex, setSelectedChordIndex] = useState<number>(0);
+  const [oneNotePerString, setOneNotePerString] = useState<boolean>(true);
 
   const handleFretClick = (stringIndex: number, fret: number) => {
     setSelectedChordIndex(0);
@@ -16,6 +17,11 @@ export const useSandbox = () => {
       if (exists) return prev.filter(p => p !== exists);
       // Ensure any manual interval from setChordShape gets cleared since the user is constructing something custom
       const cleaned = prev.map(p => ({ stringIndex: p.stringIndex, fret: p.fret }));
+      if (oneNotePerString) {
+        // remove any other frets on this string before adding the new one
+        const withoutSameString = cleaned.filter(p => p.stringIndex !== stringIndex);
+        return [...withoutSameString, { stringIndex, fret }];
+      }
       return [...cleaned, { stringIndex, fret }];
     });
   };
@@ -108,7 +114,8 @@ export const useSandbox = () => {
     selectedChordIndex,
     setSelectedChordIndex,
     activePitches,
-    selectedChordName
+    selectedChordName,
+    oneNotePerString,
+    setOneNotePerString
   };
 };
-

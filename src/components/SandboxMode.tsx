@@ -17,7 +17,9 @@ const SandboxMode: React.FC = () => {
     selectedChordIndex,
     setSelectedChordIndex,
     activePitches,
-    setClickedFrets
+    setClickedFrets,
+    oneNotePerString,
+    setOneNotePerString
   } = useSandbox();
 
   const { history, addHistory, clearHistory } = useHistory<any>('sandboxHistory');
@@ -101,6 +103,16 @@ const SandboxMode: React.FC = () => {
                placeholder="e.g. maj7" 
              />
           </div>
+
+          <label className="flex items-center justify-between group py-2">
+            <span className="text-xs font-bold uppercase text-slate-500 group-hover:text-slate-800 transition-colors">1 Note / String</span>
+            <div className="relative">
+              <input type="checkbox" className="sr-only" checked={oneNotePerString} onChange={e => setOneNotePerString(e.target.checked)} />
+              <div className={`w-10 h-6 rounded-full transition-colors ${oneNotePerString ? 'bg-blue-600' : 'bg-slate-300'}`}></div>
+              <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform ${oneNotePerString ? 'translate-x-4' : 'translate-x-0'}`}></div>
+            </div>
+          </label>
+
           <div className="h-[300px] overflow-y-auto border border-slate-200 bg-white rounded flex flex-col">
             {filteredChords.map(def => (
                <div key={def.quality} className="border-b border-slate-100 last:border-0 p-2">

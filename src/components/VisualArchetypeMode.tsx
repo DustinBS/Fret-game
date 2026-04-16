@@ -135,7 +135,6 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
         container: scrollContainerRef.current,
         target: targetRow as HTMLElement,
         flashTarget: (target) => flashElementOutline(target, { thicknessPx: 4 }),
-        postSettleDelayMs: 180,
       });
     }
   };

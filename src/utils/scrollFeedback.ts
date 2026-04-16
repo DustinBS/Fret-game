@@ -4,6 +4,7 @@ interface ScrollAndFlashOptions {
   container: HTMLElement;
   target: HTMLElement;
   flashTarget: ScrollFlashFn;
+  postSettleBufferMs?: number;
   postSettleDelayMs?: number;
   settleIdleMs?: number;
   settleTimeoutMs?: number;
@@ -21,12 +22,35 @@ interface TableRowFlashOptions {
   fadeMs?: number;
 }
 
+interface OutlineFlashState {
+  prevOutline: string;
+  prevOutlineOffset: string;
+  prevTransition: string;
+  fadeTimer?: number;
+  cleanupTimer?: number;
+}
+
+interface OverlayFlashState {
+  overlay: HTMLDivElement;
+  fadeTimer?: number;
+  cleanupTimer?: number;
+}
+
+const DEFAULT_POST_SETTLE_BUFFER_MS = 100;
+const DEFAULT_SETTLE_IDLE_MS = 140;
+const DEFAULT_SETTLE_TIMEOUT_MS = 3200;
+const DEFAULT_NO_MOVEMENT_GRACE_MS = 220;
+const NO_MOVEMENT_VISIBILITY_RATIO = 0.55;
+const TARGET_MOTION_EPSILON_PX = 0.1;
+const FLASH_BLUE_RGB = '37, 99, 235';
+
 const containerSequenceMap = new WeakMap<HTMLElement, number>();
-const tableRowCleanupTimerMap = new WeakMap<HTMLElement, number>();
-const outlineCleanupTimerMap = new WeakMap<HTMLElement, number>();
+const outlineFlashStateMap = new WeakMap<HTMLElement, OutlineFlashState>();
+const overlayFlashStateMap = new WeakMap<HTMLElement, OverlayFlashState>();
 
 function waitForScrollSettled(
   container: HTMLElement,
+  target: HTMLElement,
   idleMs: number,
   timeoutMs: number,
 ): Promise<void> {
@@ -35,18 +59,56 @@ function waitForScrollSettled(
     let lastChangeAt = start;
     let lastTop = container.scrollTop;
     let lastLeft = container.scrollLeft;
+    let hadMotion = false;
+    let lastTargetRect = target.getBoundingClientRect();
+
+    const getTargetVerticalVisibilityRatio = () => {
+      const containerRect = container.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const targetHeight = Math.max(1, targetRect.height);
+      const visibleTop = Math.max(containerRect.top, targetRect.top);
+      const visibleBottom = Math.min(containerRect.bottom, targetRect.bottom);
+      const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+      return visibleHeight / targetHeight;
+    };
 
     const tick = (now: number) => {
+      if (!target.isConnected) {
+        resolve();
+        return;
+      }
+
       const top = container.scrollTop;
       const left = container.scrollLeft;
+      const targetRect = target.getBoundingClientRect();
 
-      if (top !== lastTop || left !== lastLeft) {
-        lastTop = top;
-        lastLeft = left;
+      const containerMoved = top !== lastTop || left !== lastLeft;
+      const targetMoved =
+        Math.abs(targetRect.top - lastTargetRect.top) > TARGET_MOTION_EPSILON_PX ||
+        Math.abs(targetRect.left - lastTargetRect.left) > TARGET_MOTION_EPSILON_PX;
+
+      if (containerMoved || targetMoved) {
+        hadMotion = true;
         lastChangeAt = now;
       }
 
-      if (now - lastChangeAt >= idleMs || now - start >= timeoutMs) {
+      lastTop = top;
+      lastLeft = left;
+      lastTargetRect = targetRect;
+
+      if (hadMotion && now - lastChangeAt >= idleMs) {
+        resolve();
+        return;
+      }
+
+      if (!hadMotion && now - start >= DEFAULT_NO_MOVEMENT_GRACE_MS) {
+        if (getTargetVerticalVisibilityRatio() >= NO_MOVEMENT_VISIBILITY_RATIO) {
+          resolve();
+          return;
+        }
+      }
+
+      if (now - start >= timeoutMs) {
         resolve();
         return;
       }
@@ -58,119 +120,160 @@ function waitForScrollSettled(
   });
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function clearTimer(timer: number | undefined): void {
+  if (timer !== undefined) {
+    window.clearTimeout(timer);
+  }
+}
+
+function isLatestSequence(container: HTMLElement, sequence: number): boolean {
+  return containerSequenceMap.get(container) === sequence;
+}
+
+function clearOutlineFlashState(target: HTMLElement): void {
+  const state = outlineFlashStateMap.get(target);
+  if (!state) {
+    return;
+  }
+
+  clearTimer(state.fadeTimer);
+  clearTimer(state.cleanupTimer);
+
+  target.style.outline = state.prevOutline;
+  target.style.outlineOffset = state.prevOutlineOffset;
+  target.style.transition = state.prevTransition;
+  target.style.outlineColor = '';
+  outlineFlashStateMap.delete(target);
+}
+
+function clearOverlayFlashState(row: HTMLElement): void {
+  const state = overlayFlashStateMap.get(row);
+  if (!state) {
+    return;
+  }
+
+  clearTimer(state.fadeTimer);
+  clearTimer(state.cleanupTimer);
+  if (state.overlay.parentNode) {
+    state.overlay.parentNode.removeChild(state.overlay);
+  }
+
+  overlayFlashStateMap.delete(row);
+}
+
 export function scrollToTargetAndFlash({
   container,
   target,
   flashTarget,
-  postSettleDelayMs = 180,
-  settleIdleMs = 140,
-  settleTimeoutMs = 3200,
+  postSettleBufferMs,
+  postSettleDelayMs,
+  settleIdleMs = DEFAULT_SETTLE_IDLE_MS,
+  settleTimeoutMs = DEFAULT_SETTLE_TIMEOUT_MS,
 }: ScrollAndFlashOptions): void {
+  const settleBufferMs = Math.max(
+    0,
+    postSettleBufferMs ?? postSettleDelayMs ?? DEFAULT_POST_SETTLE_BUFFER_MS,
+  );
   const nextSequence = (containerSequenceMap.get(container) ?? 0) + 1;
   containerSequenceMap.set(container, nextSequence);
 
   target.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-  void waitForScrollSettled(container, settleIdleMs, settleTimeoutMs).then(() => {
-    window.setTimeout(() => {
-      if (containerSequenceMap.get(container) !== nextSequence) {
-        return;
-      }
-      flashTarget(target);
-    }, postSettleDelayMs);
+  void waitForScrollSettled(container, target, settleIdleMs, settleTimeoutMs).then(async () => {
+    if (!isLatestSequence(container, nextSequence)) {
+      return;
+    }
+
+    if (settleBufferMs > 0) {
+      await wait(settleBufferMs);
+    }
+
+    if (!isLatestSequence(container, nextSequence) || !target.isConnected) {
+      return;
+    }
+
+    flashTarget(target);
   });
 }
 
 export function flashElementOutline(target: HTMLElement, options: OutlineFlashOptions = {}): void {
-  const thicknessPx = options.thicknessPx ?? 4;
+  clearOutlineFlashState(target);
+
+  const state: OutlineFlashState = {
+    prevOutline: target.style.outline,
+    prevOutlineOffset: target.style.outlineOffset,
+    prevTransition: target.style.transition,
+  };
+  outlineFlashStateMap.set(target, state);
+
+  const thicknessPx = options.thicknessPx ?? 6;
   const holdMs = options.holdMs ?? 180;
   const fadeMs = options.fadeMs ?? 640;
-
-  const prevOutline = target.style.outline;
-  const prevOutlineOffset = target.style.outlineOffset;
-  const prevTransition = target.style.transition;
-
-  const existingTimer = outlineCleanupTimerMap.get(target);
-  if (existingTimer) {
-    window.clearTimeout(existingTimer);
-  }
 
   target.style.transition = 'outline-color 0ms linear';
-  target.style.outline = `${thicknessPx}px solid rgba(37, 99, 235, 0.95)`;
+  target.style.outline = `${thicknessPx}px solid rgba(${FLASH_BLUE_RGB}, 0.95)`;
   target.style.outlineOffset = '2px';
 
-  window.setTimeout(() => {
+  state.fadeTimer = window.setTimeout(() => {
     target.style.transition = `outline-color ${fadeMs}ms ease-out`;
-    target.style.outlineColor = 'rgba(37, 99, 235, 0)';
+    target.style.outlineColor = `rgba(${FLASH_BLUE_RGB}, 0)`;
   }, holdMs);
 
-  const cleanupTimer = window.setTimeout(() => {
-    target.style.outline = prevOutline;
-    target.style.outlineOffset = prevOutlineOffset;
-    target.style.transition = prevTransition;
-    target.style.outlineColor = '';
-    outlineCleanupTimerMap.delete(target);
+  state.cleanupTimer = window.setTimeout(() => {
+    clearOutlineFlashState(target);
   }, holdMs + fadeMs + 80);
-
-  outlineCleanupTimerMap.set(target, cleanupTimer);
 }
 
-function getRowCellFlashShadow(
-  cellIndex: number,
-  cellCount: number,
-  thicknessPx: number,
-  alpha: number,
-): string {
-  const color = `rgba(37, 99, 235, ${alpha})`;
-  const segments = [
-    `inset 0 ${thicknessPx}px 0 ${color}`,
-    `inset 0 -${thicknessPx}px 0 ${color}`,
-  ];
+export function flashTableRowOverlay(row: HTMLElement, options: TableRowFlashOptions = {}): void {
+  clearOverlayFlashState(row);
 
-  if (cellIndex === 0) {
-    segments.push(`inset ${thicknessPx}px 0 0 ${color}`);
-  }
-  if (cellIndex === cellCount - 1) {
-    segments.push(`inset -${thicknessPx}px 0 0 ${color}`);
-  }
-
-  return segments.join(', ');
-}
-
-export function flashTableRowDataCells(row: HTMLElement, options: TableRowFlashOptions = {}): void {
-  const thicknessPx = options.thicknessPx ?? 4;
+  const thicknessPx = options.thicknessPx ?? 5;
   const holdMs = options.holdMs ?? 180;
   const fadeMs = options.fadeMs ?? 640;
-  const dataCells = Array.from(row.querySelectorAll<HTMLElement>('td:not(:first-child)'));
 
-  if (dataCells.length === 0) {
-    return;
-  }
+  const firstCell = row.querySelector<HTMLElement>('td:first-child');
+  if (!firstCell) return;
 
-  const existingTimer = tableRowCleanupTimerMap.get(row);
-  if (existingTimer) {
-    window.clearTimeout(existingTimer);
-  }
+  const rowRect = row.getBoundingClientRect();
+  const firstRect = firstCell.getBoundingClientRect();
 
-  dataCells.forEach((cell, index) => {
-    cell.style.transition = 'box-shadow 0ms linear';
-    cell.style.boxShadow = getRowCellFlashShadow(index, dataCells.length, thicknessPx, 0.95);
-  });
+  const left = firstRect.right + window.scrollX;
+  const top = rowRect.top + window.scrollY;
+  const width = Math.max(0, rowRect.right - firstRect.right);
+  const height = rowRect.height;
 
-  window.setTimeout(() => {
-    dataCells.forEach((cell, index) => {
-      cell.style.transition = `box-shadow ${fadeMs}ms ease-out`;
-      cell.style.boxShadow = getRowCellFlashShadow(index, dataCells.length, thicknessPx, 0);
-    });
+  if (width <= 2) return;
+
+  const overlay = document.createElement('div');
+  overlay.style.position = 'absolute';
+  overlay.style.left = `${left}px`;
+  overlay.style.top = `${top}px`;
+  overlay.style.width = `${width}px`;
+  overlay.style.height = `${height}px`;
+  overlay.style.pointerEvents = 'none';
+  overlay.style.boxSizing = 'border-box';
+  overlay.style.border = `${thicknessPx}px solid rgba(${FLASH_BLUE_RGB}, 0.95)`;
+  overlay.style.borderRadius = '6px';
+  overlay.style.zIndex = '99999';
+  overlay.style.transition = `opacity ${fadeMs}ms ease-out`;
+  overlay.style.opacity = '1';
+
+  document.body.appendChild(overlay);
+
+  const state: OverlayFlashState = { overlay };
+  overlayFlashStateMap.set(row, state);
+
+  state.fadeTimer = window.setTimeout(() => {
+    overlay.style.opacity = '0';
   }, holdMs);
 
-  const cleanupTimer = window.setTimeout(() => {
-    dataCells.forEach((cell) => {
-      cell.style.boxShadow = '';
-      cell.style.transition = '';
-    });
-    tableRowCleanupTimerMap.delete(row);
+  state.cleanupTimer = window.setTimeout(() => {
+    clearOverlayFlashState(row);
   }, holdMs + fadeMs + 80);
-
-  tableRowCleanupTimerMap.set(row, cleanupTimer);
 }

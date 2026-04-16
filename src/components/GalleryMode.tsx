@@ -3,7 +3,7 @@ import { CHORD_DICTIONARY } from '../utils/chordLibrary';
 import { getIntervalHexColor, TUNING, getNoteNameFromPitchClass, getKeySignatureInfo, KEY_CONSTRAINT_OPTIONS, keySignatureUsesFlats } from '../utils/musicTheory';
 import { DIATONIC_INTERVALS, CHORD_QUALITY_DIATONIC_MAP } from '../utils/diatonic';
 import { getGalleryOrderedChordDefinitions } from '../utils/chordOrdering';
-import { flashTableRowDataCells, scrollToTargetAndFlash } from '../utils/scrollFeedback';
+import { flashTableRowOverlay, scrollToTargetAndFlash } from '../utils/scrollFeedback';
 import SheetMusic from './SheetMusic';
 import { LegendPanel } from './LegendPanel';
 
@@ -21,7 +21,7 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
   const orderedChordDefs = useMemo(() => getGalleryOrderedChordDefinitions(CHORD_DICTIONARY), []);
   const rootObj = useMemo(() => getKeySignatureInfo(keyConstraint), [keyConstraint]);
   const notationUsesFlats = useMemo(() => keySignatureUsesFlats(rootObj.renderableKeyName), [rootObj.renderableKeyName]);
-  const stringShapes = [5, 4, 3, 2];
+  const stringShapes = [5, 4, 3];
 
   const scrollToQuality = (quality: string) => {
     if (!scrollContainerRef.current) {
@@ -33,8 +33,7 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
       scrollToTargetAndFlash({
         container: scrollContainerRef.current,
         target: targetRow as HTMLElement,
-        flashTarget: (target) => flashTableRowDataCells(target, { thicknessPx: 4 }),
-        postSettleDelayMs: 180,
+        flashTarget: (target) => flashTableRowOverlay(target, { thicknessPx: 5, holdMs: 240 }),
       });
     }
   };
@@ -88,7 +87,7 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
 
         <div className="flex items-center justify-between border-t border-slate-200 pt-4">
           <label className="text-xs font-bold uppercase text-slate-500 tracking-wider cursor-pointer select-none" htmlFor="diatonicToggle">
-            Show Diatonic Context
+            Show Available Diatonic Chords
           </label>
           <input
             type="checkbox"

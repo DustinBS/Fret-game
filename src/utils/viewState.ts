@@ -71,6 +71,7 @@ interface ScrollRestoreOptions {
   maxFrames?: number;
   stableFrames?: number;
   epsilonPx?: number;
+  requireObservedScrollableRangeForNonZeroTarget?: boolean;
 }
 
 export function restoreScrollTopWithRetries(
@@ -81,12 +82,17 @@ export function restoreScrollTopWithRetries(
   const maxFrames = options.maxFrames ?? 36;
   const stableFrames = options.stableFrames ?? 3;
   const epsilonPx = options.epsilonPx ?? 1;
+  const requireObservedScrollableRangeForNonZeroTarget =
+    options.requireObservedScrollableRangeForNonZeroTarget ?? true;
   const desiredTop = Math.max(0, targetTop);
+  const needsObservedScrollableRange =
+    requireObservedScrollableRangeForNonZeroTarget && desiredTop > epsilonPx;
 
   let rafId = 0;
   let frameCount = 0;
   let stableCount = 0;
   let lastMaxScrollTop = -1;
+  let observedScrollableRange = !needsObservedScrollableRange;
 
   const tick = () => {
     if (!element.isConnected) {
@@ -94,6 +100,10 @@ export function restoreScrollTopWithRetries(
     }
 
     const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+    if (maxScrollTop > epsilonPx) {
+      observedScrollableRange = true;
+    }
+
     const clampedTarget = Math.min(desiredTop, maxScrollTop);
 
     if (Math.abs(element.scrollTop - clampedTarget) > epsilonPx) {
@@ -102,8 +112,9 @@ export function restoreScrollTopWithRetries(
 
     const reachedTarget = Math.abs(element.scrollTop - clampedTarget) <= epsilonPx;
     const stableScrollRange = Math.abs(maxScrollTop - lastMaxScrollTop) <= epsilonPx;
+    const waitingForScrollableRange = needsObservedScrollableRange && !observedScrollableRange;
 
-    if (reachedTarget && stableScrollRange) {
+    if (reachedTarget && stableScrollRange && !waitingForScrollableRange) {
       stableCount += 1;
     } else {
       stableCount = 0;

@@ -64,6 +64,8 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
     writeSessionJson(GALLERY_SELECTED_DIATONIC_KEY, selectedDiatonic);
   }, [selectedDiatonic]);
 
+  // Gallery uses a large table with sticky cells and VexFlow previews, so scrollHeight can
+  // stabilize after first paint. Use retry-based restoration instead of one-shot assignment.
   useLayoutEffect(() => {
     const cleanupFns: Array<() => void> = [];
 
@@ -79,7 +81,7 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
     if (scrollContainerRef.current) {
       cleanupFns.push(
         restoreScrollTopWithRetries(scrollContainerRef.current, readSessionNumber(GALLERY_MAIN_SCROLL_KEY, 0), {
-          maxFrames: 120,
+          maxFrames: 180,
           stableFrames: 4,
         }),
       );
@@ -87,6 +89,17 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
 
     return () => {
       cleanupFns.forEach((cleanup) => cleanup());
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scrollContainerRef.current) {
+        writeSessionNumber(GALLERY_MAIN_SCROLL_KEY, scrollContainerRef.current.scrollTop);
+      }
+      if (chordListRef.current) {
+        writeSessionNumber(GALLERY_LIST_SCROLL_KEY, chordListRef.current.scrollTop);
+      }
     };
   }, []);
 
@@ -171,8 +184,19 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
         </div>
       </aside>
 
-      <main ref={scrollContainerRef} onScroll={handleMainScroll} className="flex-1 h-full overflow-y-auto flex flex-col py-1 p-4 lg:p-8 gap-4 min-w-0 bg-slate-100/50">
-        <div className="w-full overflow-x-auto bg-white rounded border border-slate-200 shadow-sm">
+      <main
+        ref={scrollContainerRef}
+        onScroll={handleMainScroll}
+        className="flex-1 h-full overflow-y-auto py-1 p-4 lg:p-8 min-w-0 bg-slate-100/50"
+      >
+        {/*
+          IMPORTANT: keep vertical scrolling on <main> only.
+          MDN overflow behavior: when overflow-x is not visible/clip, overflow-y:visible
+          computes to auto, so this wrapper can become an unintended vertical scroll container.
+          Also keep this wrapper non-shrinking; in flex layouts, shrink+overflow-y:hidden can
+          clip rows and make the expected gallery scrollbar appear "gone".
+        */}
+        <div className="w-full overflow-x-auto overflow-y-hidden flex-none bg-white rounded border border-slate-200 shadow-sm">
           <table className="w-full text-left border-collapse min-w-[800px]">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">

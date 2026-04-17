@@ -10,6 +10,14 @@ https://dustinbs.github.io/Fret-game/
 
 **Stack:** React, TypeScript, Tailwind CSS, VexFlow (Music Notation)
 
+## Native App Mode Coverage
+
+- The native app now exposes all primary product modes through an in-app tab shell:
+    - `Trainer` runs as a native React Native screen.
+    - `Sandbox`, `Quiz`, `Gallery`, and `Visual Archetype` are available inside the native app via embedded WebView tabs.
+- WebView tabs are lazily mounted and kept alive after first open so mode state is retained while switching tabs in the same session.
+- If a tab fails to load (for example due to connectivity), the app shows an inline retry state.
+
 ## 1\. Game Concept & Mission
 
 **Fretboard Focus** is a simple webapp to gamify sight-reading training for guitar. You can toggle between **Relative Position (Position Mode)** or **Absolute Navigation (Octave Mode)** to train either fixed-hand position for improv-related skills (12 pitch classes only) or fretboard memorization (~45 unique pitches) by adding specificity between octaves (e.g., Low E vs. High E is different) across the entire neck.

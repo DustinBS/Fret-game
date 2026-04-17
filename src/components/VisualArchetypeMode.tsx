@@ -96,6 +96,7 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
   const [chordSearch, setChordSearch] = useState(() => readSessionString(VISUAL_CHORD_SEARCH_KEY, ''));
   const scrollContainerRef = useRef<HTMLElement>(null);
   const chordListRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const rootObj = useMemo(() => getKeySignatureInfo(keyConstraint), [keyConstraint]);
   const notationUsesFlats = useMemo(() => keySignatureUsesFlats(rootObj.renderableKeyName), [rootObj.renderableKeyName]);
@@ -136,6 +137,14 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
   useEffect(() => {
     writeSessionString(VISUAL_CHORD_SEARCH_KEY, chordSearch);
   }, [chordSearch]);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   useEffect(() => {
     writeSessionJson(VISUAL_SELECTED_DIATONIC_KEY, selectedDiatonicByGroup);
@@ -250,6 +259,7 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
         <div className="border-t border-slate-200 pt-4">
           <div className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Chord Search</div>
           <input
+            ref={searchInputRef}
             type="text"
             value={chordSearch}
             onChange={(e) => setChordSearch(e.target.value)}

@@ -8,6 +8,7 @@ import { useHistory, HistoryPanel } from './History';
 import { LegendPanel } from './LegendPanel';
 import { useGlobalKeyConstraint } from '../hooks/useGlobalKey';
 import { buildSearchWithUpdates, navigateFromClick } from '../utils/queryNavigation';
+import { getGalleryOrderedChordDefinitions } from '../utils/chordOrdering';
 import { readSessionNumber, readSessionString, restoreScrollTopWithRetries, writeSessionNumber, writeSessionString } from '../utils/viewState';
 
 const SANDBOX_SEARCH_KEY = 'fret-sandbox-search';
@@ -33,6 +34,7 @@ const SandboxMode: React.FC = () => {
 
   const [search, setSearch] = useState(() => readSessionString(SANDBOX_SEARCH_KEY, ''));
   const chordLibraryRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const STRING_NAMES: Record<number, string> = {
     5: "Str 6E",
@@ -46,6 +48,14 @@ const SandboxMode: React.FC = () => {
   useEffect(() => {
     writeSessionString(SANDBOX_SEARCH_KEY, search);
   }, [search]);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   useLayoutEffect(() => {
     if (!chordLibraryRef.current) {
@@ -90,9 +100,16 @@ const SandboxMode: React.FC = () => {
     return () => window.removeEventListener('popstate', handleUrlState);
   }, []);
 
-  const filteredChords = CHORD_DICTIONARY.filter(c => 
-    c.quality.toLowerCase().includes(search.toLowerCase())
-  );
+  const orderedChordDefinitions = useMemo(() => getGalleryOrderedChordDefinitions(CHORD_DICTIONARY), []);
+
+  const filteredChords = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) {
+      return orderedChordDefinitions;
+    }
+
+    return orderedChordDefinitions.filter((chord) => chord.quality.toLowerCase().includes(query));
+  }, [orderedChordDefinitions, search]);
 
   const handleChordLibraryScroll = (event: React.UIEvent<HTMLDivElement>) => {
     writeSessionNumber(SANDBOX_LIBRARY_SCROLL_KEY, event.currentTarget.scrollTop);
@@ -164,6 +181,7 @@ const SandboxMode: React.FC = () => {
           <div>
              <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Search Chord Shape</span>
              <input 
+               ref={searchInputRef}
                type="text" 
                className="w-full mt-2 p-2 border border-slate-300 rounded focus:border-blue-500 outline-none" 
                value={search} 

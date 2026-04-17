@@ -4,7 +4,7 @@ import { useFretboardGame } from '../hooks/useFretboardGame';
 import { getNoteName } from '../utils/musicTheory';
 import SheetMusic from './SheetMusic';
 import { Fretboard, type FretMarker } from './Fretboard';
-import { useHistory, HistoryPanel } from './History';
+import { getCorrectMissHistoryLabelClass, useHistory, HistoryPanel } from './History';
 
 // Trainer palette: 6 high-contrast, high-saturation colors for trainer gamemode
 const SAFE_PALETTE = [
@@ -258,7 +258,12 @@ const FretboardGame: React.FC = () => {
 
       {/* RIGHT SIDEBAR - HISTORY */}
       <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-l border-slate-200 flex flex-col shrink-0 p-6">
-        <HistoryPanel history={history} onClear={clearHistory} onRestore={(state) => setClickedFrets(state)} />
+        <HistoryPanel
+          history={history}
+          onClear={clearHistory}
+          onRestore={(state) => setClickedFrets(state)}
+          getLabelClassName={getCorrectMissHistoryLabelClass}
+        />
       </aside>
     </div>
   );

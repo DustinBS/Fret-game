@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { CHORD_DICTIONARY, type ChordShape } from '../utils/chordLibrary';
-import { TUNING, NOTES_FLAT, NOTES_SHARP } from '../utils/musicTheory';
+import { getKeySignatureInfo, keySignatureUsesFlats, KEY_CONSTRAINT_OPTIONS, TUNING, NOTES_FLAT, NOTES_SHARP } from '../utils/musicTheory';
+import { CHORD_QUALITY_DIATONIC_MAP, DIATONIC_INTERVALS } from '../utils/diatonic';
 import { readSessionJson, writeSessionJson } from '../utils/viewState';
 
 type QuizState = 'PLAYING' | 'REVEALED';
@@ -17,7 +18,16 @@ interface QuizData {
 
 export const QUIZ_ROOT_STRING_OPTIONS = [5, 4, 3] as const;
 export type QuizRootString = (typeof QUIZ_ROOT_STRING_OPTIONS)[number];
+export const QUIZ_KEY_CONSTRAINT_ALL = 'ALL';
 const QUIZ_STATE_KEY = 'fret-quiz-state';
+const MAX_RECENT_QUIZ_KEYS = 80;
+
+interface QuizCandidate {
+  key: string;
+  quality: string;
+  shape: ChordShape;
+  rootPitchClass: number;
+}
 
 interface QuizPersistedState {
   streak: number;
@@ -28,6 +38,9 @@ interface QuizPersistedState {
   inputShape: string;
   enabledRootStrings: QuizRootString[];
   keyConstraint: string;
+  showRootHint: boolean;
+  recentQuizKeys: string[];
+  onlyDiatonicChords: boolean;
 }
 
 function normalizeRootStringSelection(selection: QuizRootString[]): QuizRootString[] {
@@ -84,6 +97,45 @@ function getActiveRootStrings(selection: QuizRootString[]): readonly QuizRootStr
   return normalizeRootStringSelection(selection);
 }
 
+function normalizeKeyConstraint(value: unknown): string {
+  if (typeof value !== 'string') {
+    return QUIZ_KEY_CONSTRAINT_ALL;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return QUIZ_KEY_CONSTRAINT_ALL;
+  }
+
+  const keyRoot = trimmed.split(/\s+/)[0];
+  const normalizedKeyRoot = keyRoot.toUpperCase();
+  if (normalizedKeyRoot === 'NONE' || normalizedKeyRoot === 'ALL') {
+    return QUIZ_KEY_CONSTRAINT_ALL;
+  }
+
+  return KEY_CONSTRAINT_OPTIONS.includes(keyRoot) ? keyRoot : QUIZ_KEY_CONSTRAINT_ALL;
+}
+
+function normalizeShapeGuess(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) {
+    return '';
+  }
+
+  const firstDigit = trimmed.match(/[1-6]/)?.[0];
+  return firstDigit ?? trimmed;
+}
+
+function normalizeRecentQuizKeys(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    .slice(0, MAX_RECENT_QUIZ_KEYS);
+}
+
 export function useChordQuiz() {
   const persistedState = useMemo(
     () => readSessionJson<Partial<QuizPersistedState>>(QUIZ_STATE_KEY, {}),
@@ -111,8 +163,11 @@ export function useChordQuiz() {
   });
 
   const [keyConstraint, setKeyConstraint] = useState(() => {
-    return typeof persistedState.keyConstraint === 'string' ? persistedState.keyConstraint : 'C major';
+    return normalizeKeyConstraint(persistedState.keyConstraint);
   });
+  const [showRootHint, setShowRootHint] = useState(() => persistedState.showRootHint === true);
+  const [recentQuizKeys, setRecentQuizKeys] = useState<string[]>(() => normalizeRecentQuizKeys(persistedState.recentQuizKeys));
+  const [onlyDiatonicChords, setOnlyDiatonicChords] = useState(() => persistedState.onlyDiatonicChords === true);
 
   const activeRootStrings = useMemo(() => getActiveRootStrings(enabledRootStrings), [enabledRootStrings]);
 
@@ -148,41 +203,103 @@ export function useChordQuiz() {
       inputShape,
       enabledRootStrings,
       keyConstraint,
+      showRootHint,
+      recentQuizKeys,
+      onlyDiatonicChords,
     });
-  }, [streak, gameState, quizData, inputRoot, inputQuality, inputShape, enabledRootStrings, keyConstraint]);
+  }, [streak, gameState, quizData, inputRoot, inputQuality, inputShape, enabledRootStrings, keyConstraint, showRootHint, recentQuizKeys, onlyDiatonicChords]);
+
+  useEffect(() => {
+    if (!quizData || gameState !== 'PLAYING') {
+      return;
+    }
+
+    if (showRootHint) {
+      const hintedRoot = quizData.useFlats ? NOTES_FLAT[quizData.rootPitchClass] : NOTES_SHARP[quizData.rootPitchClass];
+      setInputRoot(hintedRoot);
+      return;
+    }
+
+    setInputRoot('');
+  }, [showRootHint, quizData, gameState]);
 
   const generateQuiz = useCallback(() => {
-    let allowedQualities = CHORD_DICTIONARY;
-    let allowedRoots = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    const allPitchClasses = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    const hasKeyConstraint = keyConstraint !== QUIZ_KEY_CONSTRAINT_ALL;
+    const keyInfo = hasKeyConstraint ? getKeySignatureInfo(keyConstraint) : null;
+
+    const allowedRoots = hasKeyConstraint && keyInfo
+      ? Object.values(DIATONIC_INTERVALS).map((offset) => (keyInfo.pitchClass + offset) % 12)
+      : allPitchClasses;
+
     let useFlats = Math.random() > 0.5;
 
-    if (keyConstraint !== 'None') {
-        const rootString = keyConstraint.split(' ')[0]; // "C" or "Db"
-        let pitchClass = NOTES_SHARP.indexOf(rootString);
-        if (pitchClass === -1) pitchClass = NOTES_FLAT.indexOf(rootString);
-        
-        useFlats = rootString.includes('b') || rootString === 'F';
-        
-        const majorScaleOffsets = [0, 2, 4, 5, 7, 9, 11];
-        const triadQualities = ['maj7', 'min7', 'min7', 'maj7', '7', 'min7', 'min7b5'];
-        
-        const index = Math.floor(Math.random() * 7);
-        const chordRoot = (Math.max(0, pitchClass) + majorScaleOffsets[index]) % 12;
-        const chordQuality = triadQualities[index];
-        
-        allowedRoots = [chordRoot];
-        allowedQualities = CHORD_DICTIONARY.filter(d => d.quality === chordQuality);
+    if (hasKeyConstraint && keyInfo) {
+      useFlats = keySignatureUsesFlats(keyInfo.renderableKeyName);
     }
 
     const activeRootSet = new Set<number>(activeRootStrings);
-    const constrainedCandidates = allowedQualities.flatMap((entry) => {
-      return entry.shapes
-        .filter((shape) => activeRootSet.has(shape.rootString))
-        .map((shape) => ({ quality: entry.quality, shape }));
+    const diatonicQualities = new Set<string>(Object.keys(CHORD_QUALITY_DIATONIC_MAP));
+    const baseChordDictionary = onlyDiatonicChords
+      ? CHORD_DICTIONARY.filter((entry) => diatonicQualities.has(entry.quality))
+      : CHORD_DICTIONARY;
+
+    const effectiveChordDictionary = baseChordDictionary.length > 0 ? baseChordDictionary : CHORD_DICTIONARY;
+
+    const isDiatonicCandidate = (quality: string, rootPitchClass: number): boolean => {
+      if (!onlyDiatonicChords) {
+        return true;
+      }
+
+      const qualityDegrees = CHORD_QUALITY_DIATONIC_MAP[quality] ?? [];
+      if (qualityDegrees.length === 0) {
+        return false;
+      }
+
+      if (!hasKeyConstraint || !keyInfo) {
+        return true;
+      }
+
+      const offset = (rootPitchClass - keyInfo.pitchClass + 12) % 12;
+      const matchingDegrees = Object.entries(DIATONIC_INTERVALS)
+        .filter(([, degreeOffset]) => degreeOffset === offset)
+        .map(([degree]) => degree);
+
+      if (matchingDegrees.length === 0) {
+        return false;
+      }
+
+      return matchingDegrees.some((degree) => qualityDegrees.includes(degree));
+    };
+
+    const constrainedCandidates = effectiveChordDictionary.flatMap((entry) => {
+      return entry.shapes.flatMap((shape, shapeIndex) => {
+        if (!activeRootSet.has(shape.rootString)) {
+          return [];
+        }
+
+        return allowedRoots
+          .filter((rootPitchClass) => isDiatonicCandidate(entry.quality, rootPitchClass))
+          .map((rootPitchClass) => ({
+            key: `${entry.quality}|${shape.rootString}|${shapeIndex}|${rootPitchClass}`,
+            quality: entry.quality,
+            shape,
+            rootPitchClass,
+          }));
+      });
     });
 
-    const fallbackCandidates = allowedQualities.flatMap((entry) => {
-      return entry.shapes.map((shape) => ({ quality: entry.quality, shape }));
+    const fallbackCandidates = effectiveChordDictionary.flatMap((entry) => {
+      return entry.shapes.flatMap((shape, shapeIndex) => {
+        return allowedRoots
+          .filter((rootPitchClass) => isDiatonicCandidate(entry.quality, rootPitchClass))
+          .map((rootPitchClass) => ({
+            key: `${entry.quality}|${shape.rootString}|${shapeIndex}|${rootPitchClass}`,
+            quality: entry.quality,
+            shape,
+            rootPitchClass,
+          }));
+      });
     });
 
     const candidates = constrainedCandidates.length > 0 ? constrainedCandidates : fallbackCandidates;
@@ -190,11 +307,14 @@ export function useChordQuiz() {
       return;
     }
 
-    const selectedCandidate = candidates[Math.floor(Math.random() * candidates.length)];
+    const recentSet = new Set(recentQuizKeys);
+    const unseenCandidates = candidates.filter((candidate) => !recentSet.has(candidate.key));
+    const candidatePool = unseenCandidates.length > 0 ? unseenCandidates : candidates;
+
+    const selectedCandidate = candidatePool[Math.floor(Math.random() * candidatePool.length)] as QuizCandidate;
     const quality = selectedCandidate.quality;
     const shape = selectedCandidate.shape;
-    
-    const targetPitchClass = allowedRoots[Math.floor(Math.random() * allowedRoots.length)];
+    const targetPitchClass = selectedCandidate.rootPitchClass;
     
     // Find base fret on the root string
     const stringOpenPitch = TUNING[shape.rootString];
@@ -204,11 +324,13 @@ export function useChordQuiz() {
     if (rootFret <= 2 && Math.random() > 0.5) rootFret += 12;
 
     // TUNING[o.string] + rootFret + o.offset is correct for the absolute pitch of that note.
-    const pitches = shape.offsets.map((o: any) => TUNING[o.string] + rootFret + o.offset);
+    const pitches = shape.offsets.map((offsetDef) => TUNING[offsetDef.string] + rootFret + offsetDef.offset);
 
-    if (keyConstraint === 'None') {
+    if (!hasKeyConstraint) {
         useFlats = [1, 3, 5, 8, 10].includes(targetPitchClass) && Math.random() > 0.5;
     }
+
+    const hintedRoot = useFlats ? NOTES_FLAT[targetPitchClass] : NOTES_SHARP[targetPitchClass];
 
     setQuizData({
       rootPitchClass: targetPitchClass,
@@ -220,11 +342,16 @@ export function useChordQuiz() {
       useFlats
     });
     
-    setInputRoot('');
+    setInputRoot(showRootHint ? hintedRoot : '');
     setInputQuality('');
     setInputShape('');
     setGameState('PLAYING');
-  }, [keyConstraint, activeRootStrings]);
+
+    setRecentQuizKeys((prev) => {
+      const deduped = [selectedCandidate.key, ...prev.filter((key) => key !== selectedCandidate.key)];
+      return deduped.slice(0, MAX_RECENT_QUIZ_KEYS);
+    });
+  }, [keyConstraint, activeRootStrings, showRootHint, recentQuizKeys, onlyDiatonicChords]);
 
   const submitGuess = useCallback(() => {
     if (!quizData || gameState !== 'PLAYING') return false;
@@ -233,15 +360,15 @@ export function useChordQuiz() {
     const isRootCorrect = correctRootNames.some(name => name.toLowerCase() === inputRoot.trim().toLowerCase());
     const isQualityCorrect = quizData.quality.toLowerCase() === inputQuality.trim().toLowerCase();
     
-    // Check shape string, allow matching the string number
-    const isShapeCorrect = inputShape === '' || 
-        inputShape === String(quizData.rootString) || 
-        inputShape.includes(String(6 - quizData.rootString)); 
+    const normalizedShape = normalizeShapeGuess(inputShape);
+    const matchesRootStringIndex = normalizedShape === String(quizData.rootString);
+    const matchesDisplayedString = normalizedShape === String(quizData.rootString + 1);
+    const isShapeCorrect = normalizedShape === '' || matchesRootStringIndex || matchesDisplayedString;
 
-    const wasCorrect = isRootCorrect && isQualityCorrect && (inputShape === '' || isShapeCorrect);
+    const wasCorrect = isRootCorrect && isQualityCorrect && isShapeCorrect;
     
     if (wasCorrect) {
-      setStreak((s: any) => s + 1);
+      setStreak((s) => s + 1);
     } else {
       setStreak(0);
     }
@@ -256,6 +383,7 @@ export function useChordQuiz() {
     gameState,
     setGameState,
     streak,
+    setStreak,
     inputRoot,
     setInputRoot,
     inputQuality,
@@ -263,10 +391,15 @@ export function useChordQuiz() {
     inputShape,
     setInputShape,
     enabledRootStrings,
+    setEnabledRootStrings,
     rootStringConstraintLabel,
     toggleRootStringConstraint,
     keyConstraint,
     setKeyConstraint,
+    showRootHint,
+    setShowRootHint,
+    onlyDiatonicChords,
+    setOnlyDiatonicChords,
     generateQuiz,
     submitGuess
   };

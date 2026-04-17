@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export interface HistoryItem<T = any> {
     label: string;
@@ -36,7 +36,26 @@ export const useHistory = <T = any>(storageKey: string) => {
     return { history, addHistory, clearHistory };
 };
 
-export const HistoryPanel: React.FC<{ history: HistoryItem<any>[], onClear: () => void, onRestore?: (state: any) => void }> = ({ history, onClear, onRestore }) => {
+interface HistoryPanelProps<T = any> {
+    history: HistoryItem<T>[];
+    onClear: () => void;
+    onRestore?: (state: T) => void;
+    getLabelClassName?: (item: HistoryItem<T>) => string;
+}
+
+export function getCorrectMissHistoryLabelClass<T>(item: HistoryItem<T>): string {
+    if (item.label.includes('(Correct)')) {
+        return 'text-emerald-600';
+    }
+
+    if (item.label.includes('(Miss)')) {
+        return 'text-red-600';
+    }
+
+    return '';
+}
+
+export const HistoryPanel = <T,>({ history, onClear, onRestore, getLabelClassName }: HistoryPanelProps<T>) => {
     if (history.length === 0) return null;
 
     return (
@@ -47,12 +66,12 @@ export const HistoryPanel: React.FC<{ history: HistoryItem<any>[], onClear: () =
             </div>
             <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-2 py-4 pr-2">
                 {history.map(item => (
-                    <div 
-                        key={item.timestamp} 
+                    <div
+                        key={item.timestamp}
                         className={`text-sm bg-slate-100 p-2 rounded flex justify-between items-center ${item.state ? 'cursor-pointer hover:bg-slate-200 active:bg-slate-300 transition' : ''}`}
                         onClick={() => onRestore && item.state && onRestore(item.state)}
                     >
-                        <span className="font-bold text-slate-700 select-none">{item.label}</span>
+                        <span className={`font-bold select-none ${getLabelClassName ? getLabelClassName(item) : 'text-slate-700'}`}>{item.label}</span>
                         <span className="text-[10px] text-slate-400 select-none ml-2">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                 ))}

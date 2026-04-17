@@ -1,18 +1,84 @@
 // src/hooks/useFretboardGame.ts
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 
 import { TUNING, getLetterIndices } from '../utils/musicTheory';
+import { readSessionJson, writeSessionJson } from '../utils/viewState';
 
 export type FretPosition = { stringIndex: number; fret: number };
-export type GameMode = 'WINDOW' | 'OCTAVE' | 'CHORD';
+export type GameMode = 'WINDOW' | 'OCTAVE';
 export type AccidentalMode = 'SHARP' | 'FLAT' | 'BOTH';
 
-// CHORDS unused for now
+interface RoundData {
+  notes: number[];
+  anchor: number;
+  colorIndices: number[];
+  roundUseFlats: boolean;
+}
+
+interface TrainerPersistedState {
+  gameMode: GameMode;
+  accidentalMode: AccidentalMode;
+  noteCount: number;
+  isSheetMode: boolean;
+  isHiddenMode: boolean;
+  roundData: RoundData;
+  clickedFrets: FretPosition[];
+  gameState: 'GUESSING' | 'REVEALED';
+  streak: number;
+}
+
+const TRAINER_STATE_KEY = 'fret-trainer-state';
+
+function normalizeRoundData(value: unknown): RoundData | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Partial<RoundData>;
+  if (
+    !Array.isArray(candidate.notes) ||
+    !Number.isFinite(candidate.anchor) ||
+    !Array.isArray(candidate.colorIndices) ||
+    typeof candidate.roundUseFlats !== 'boolean'
+  ) {
+    return null;
+  }
+
+  return {
+    notes: candidate.notes.map((note) => Number(note)).filter((note) => Number.isFinite(note)),
+    anchor: Number(candidate.anchor),
+    colorIndices: candidate.colorIndices
+      .map((index) => Number(index))
+      .filter((index) => Number.isFinite(index)),
+    roundUseFlats: candidate.roundUseFlats,
+  };
+}
+
+function normalizeFretPositions(value: unknown): FretPosition[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+      const candidate = item as Partial<FretPosition>;
+      if (!Number.isFinite(candidate.stringIndex) || !Number.isFinite(candidate.fret)) {
+        return null;
+      }
+      return {
+        stringIndex: Number(candidate.stringIndex),
+        fret: Number(candidate.fret),
+      };
+    })
+    .filter((position): position is FretPosition => position !== null);
+}
 
 const createRoundData = (count: number, gameMode: GameMode, accidentalMode: AccidentalMode) => {
   const newNotes = new Set<number>();
   const usedLetters = new Set<number>();
-  let chordName = '';
   const safeCount = Math.min(count, 7);
 
   // RESOLVE ACCIDENTALS FOR THIS ROUND
@@ -56,28 +122,54 @@ const createRoundData = (count: number, gameMode: GameMode, accidentalMode: Acci
     anchor: newAnchor,
     colorIndices,
     roundUseFlats: useFlats, // Store the resolved preference
-    chord: chordName,
   };
 };
 
 export const useFretboardGame = (initialCount: number = 1) => {
-  // CHANGED: Default to 'OCTAVE'
-  const [gameMode, setGameMode] = useState<GameMode>('OCTAVE');
-  const [accidentalMode, setAccidentalMode] = useState<AccidentalMode>('SHARP');
-  const [noteCount, setNoteCountState] = useState<number>(initialCount);
+  const persistedState = useMemo(
+    () => readSessionJson<Partial<TrainerPersistedState>>(TRAINER_STATE_KEY, {}),
+    [],
+  );
 
-  // CHANGED: Default isSheetMode to true
-  const [isSheetMode, setIsSheetMode] = useState(true);
-  const [isHiddenMode, setIsHiddenMode] = useState(false);
+  const initialGameMode: GameMode = persistedState.gameMode === 'WINDOW' ? 'WINDOW' : 'OCTAVE';
+  const initialAccidentalMode: AccidentalMode =
+    persistedState.accidentalMode === 'FLAT' || persistedState.accidentalMode === 'BOTH'
+      ? persistedState.accidentalMode
+      : 'SHARP';
+  const initialNoteCount = Number.isFinite(persistedState.noteCount)
+    ? Math.max(1, Math.min(5, Number(persistedState.noteCount)))
+    : initialCount;
 
-  // CHANGED: Initialize roundData with 'OCTAVE' to match gameMode state
-  const [roundData, setRoundData] = useState(() => createRoundData(initialCount, 'OCTAVE', 'SHARP'));
+  const [gameMode, setGameMode] = useState<GameMode>(initialGameMode);
+  const [accidentalMode, setAccidentalMode] = useState<AccidentalMode>(initialAccidentalMode);
+  const [noteCount, setNoteCountState] = useState<number>(initialNoteCount);
 
-  const [clickedFrets, setClickedFrets] = useState<FretPosition[]>([]);
-  const [gameState, setGameState] = useState<'GUESSING' | 'REVEALED'>('GUESSING');
-  const [streak, setStreak] = useState(0);
+  const [isSheetMode, setIsSheetMode] = useState(
+    typeof persistedState.isSheetMode === 'boolean' ? persistedState.isSheetMode : true,
+  );
+  const [isHiddenMode, setIsHiddenMode] = useState(
+    typeof persistedState.isHiddenMode === 'boolean' ? persistedState.isHiddenMode : false,
+  );
 
-  const { notes: targetNotes, anchor: anchorFret, colorIndices, roundUseFlats, chord: targetChord } = roundData;
+  const [roundData, setRoundData] = useState<RoundData>(() => {
+    const hydrated = normalizeRoundData(persistedState.roundData);
+    if (hydrated && hydrated.notes.length > 0 && hydrated.colorIndices.length > 0) {
+      return hydrated;
+    }
+
+    return createRoundData(initialNoteCount, initialGameMode, initialAccidentalMode);
+  });
+
+  const [clickedFrets, setClickedFrets] = useState<FretPosition[]>(() => normalizeFretPositions(persistedState.clickedFrets));
+  const [gameState, setGameState] = useState<'GUESSING' | 'REVEALED'>(() =>
+    persistedState.gameState === 'REVEALED' ? 'REVEALED' : 'GUESSING',
+  );
+  const [streak, setStreak] = useState(() => {
+    const value = persistedState.streak;
+    return Number.isFinite(value) && Number(value) >= 0 ? Number(value) : 0;
+  });
+
+  const { notes: targetNotes, anchor: anchorFret, colorIndices, roundUseFlats } = roundData;
 
   const windowStart = gameMode === 'WINDOW' ? Math.max(0, anchorFret - 3) : 0;
   const windowEnd   = gameMode === 'WINDOW' ? Math.min(14, anchorFret + 3) : 14;
@@ -89,8 +181,8 @@ export const useFretboardGame = (initialCount: number = 1) => {
   }, [noteCount, gameMode, accidentalMode]);
 
   const toggleGameMode = () => {
-    setGameMode(prev => {
-      const newMode = prev === 'WINDOW' ? 'OCTAVE' : prev === 'OCTAVE' ? 'CHORD' : 'WINDOW';
+    setGameMode((prev) => {
+      const newMode: GameMode = prev === 'WINDOW' ? 'OCTAVE' : 'WINDOW';
       setStreak(0);
       setRoundData(createRoundData(noteCount, newMode, accidentalMode));
       setClickedFrets([]);
@@ -151,7 +243,7 @@ export const useFretboardGame = (initialCount: number = 1) => {
       for (let f = windowStart; f <= windowEnd; f++) {
         const pitch = TUNING[s] + f;
         let isMatch = false;
-        if (gameMode === 'WINDOW' || gameMode === 'CHORD') {
+        if (gameMode === 'WINDOW') {
           isMatch = targetNotes.includes(pitch % 12);
         } else {
           isMatch = targetNotes.includes(pitch);
@@ -176,8 +268,21 @@ export const useFretboardGame = (initialCount: number = 1) => {
 
     setGameState('REVEALED');
     return allCorrectFound && noFalsePositives && correctPositions.length > 0;
-    return allCorrectFound && noFalsePositives && correctPositions.length > 0;
   };
+
+  useEffect(() => {
+    writeSessionJson<TrainerPersistedState>(TRAINER_STATE_KEY, {
+      gameMode,
+      accidentalMode,
+      noteCount,
+      isSheetMode,
+      isHiddenMode,
+      roundData,
+      clickedFrets,
+      gameState,
+      streak,
+    });
+  }, [gameMode, accidentalMode, noteCount, isSheetMode, isHiddenMode, roundData, clickedFrets, gameState, streak]);
 
   return {
     targetNotes,
@@ -205,6 +310,5 @@ export const useFretboardGame = (initialCount: number = 1) => {
     submitGuess,
     generateNewRound,
     TUNING,
-    targetChord,
   };
 };

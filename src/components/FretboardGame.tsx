@@ -42,7 +42,6 @@ const FretboardGame: React.FC = () => {
     clearGuesses, // IMPORTED
     setClickedFrets,
     generateNewRound,
-    targetChord,
     TUNING
   } = useFretboardGame(3); // CHANGED: Default to 3 notes
 
@@ -50,9 +49,7 @@ const FretboardGame: React.FC = () => {
 
   const handleCheckAnswer = () => {
     const wasCorrect = submitGuess();
-    const targetStr = gameMode === 'CHORD' 
-        ? targetChord 
-        : targetNotes.map(n => getNoteName(n, roundUseFlats).note).join(', ');
+    const targetStr = targetNotes.map((n) => getNoteName(n, roundUseFlats).note).join(', ');
     addHistory(`${getGameModeName(gameMode)}: ${targetStr} - ${wasCorrect ? '(Correct)' : '(Miss)'}`, clickedFrets);
   };
 
@@ -65,7 +62,6 @@ const FretboardGame: React.FC = () => {
   const getGameModeName = (mode: string) => {
     if (mode === 'WINDOW') return 'Position';
     if (mode === 'OCTAVE') return 'Octave';
-    if (mode === 'CHORD') return 'Chord';
     return '';
   }
 
@@ -80,7 +76,7 @@ const FretboardGame: React.FC = () => {
       let isTarget = false;
       let colorIndex = 0;
 
-      if (gameMode === 'WINDOW' || gameMode === 'CHORD') {
+        if (gameMode === 'WINDOW') {
           const targetIdx = targetNotes.indexOf(pitch % 12);
           isTarget = targetIdx !== -1;
           if (isTarget) colorIndex = colorIndices[targetIdx % colorIndices.length];
@@ -128,8 +124,8 @@ const FretboardGame: React.FC = () => {
       {/* SIDEBAR NAVIGATION */}
       <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-r border-slate-200 flex flex-col p-6 gap-8 shrink-0">
 
-        {/* Title & Streak */}
-        <div className="flex flex-row lg:flex-col justify-between items-baseline lg:items-start gap-4">
+        {/* Title */}
+        <div>
             <div>
                 <h1 className="text-2xl font-black tracking-tighter uppercase">
                   Fret<span className="text-slate-400">Focus</span>
@@ -137,13 +133,6 @@ const FretboardGame: React.FC = () => {
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
                   Sight Reading Trainer
                 </div>
-            </div>
-
-            <div className="flex flex-col items-end lg:items-start">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Streak</span>
-                <span className={`text-3xl font-mono font-bold leading-none ${streak > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>
-                  {streak}
-                </span>
             </div>
         </div>
 
@@ -162,7 +151,7 @@ const FretboardGame: React.FC = () => {
 
             {/* Toggles */}
             <div className="space-y-3 pt-2 border-t border-slate-200">
-                <ToggleRow label="Sheet Music" checked={isSheetMode} onChange={setIsSheetMode} disabled={gameMode === 'CHORD'} />
+              <ToggleRow label="Sheet Music" checked={isSheetMode} onChange={setIsSheetMode} />
                 <ToggleRow label="Hide Guesses" checked={isHiddenMode} onChange={setIsHiddenMode} />
             </div>
 
@@ -182,9 +171,7 @@ const FretboardGame: React.FC = () => {
                     className="text-left text-xs font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-50 py-2 px-3 -mx-3 rounded transition-colors uppercase tracking-wider flex items-center justify-between group"
                 >
                     <span>Switch to {
-                      gameMode === 'WINDOW' ? getGameModeName('OCTAVE') :
-                      gameMode === 'OCTAVE' ? getGameModeName('CHORD') :
-                      getGameModeName('WINDOW')
+                      gameMode === 'WINDOW' ? getGameModeName('OCTAVE') : getGameModeName('WINDOW')
                     } Mode</span>
                     <span className="opacity-0 group-hover:opacity-100 transition-opacity">→</span>
                 </button>
@@ -199,6 +186,15 @@ const FretboardGame: React.FC = () => {
 
             </div>
         </div>
+
+        <div className="mt-auto pt-4 border-t border-slate-200">
+            <div className="inline-flex flex-col border border-slate-200 rounded bg-white/80 px-2 py-1">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Streak</span>
+                <span className={`text-lg font-mono font-bold leading-none ${streak > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  {streak}
+                </span>
+            </div>
+        </div>
       </aside>
 
       {/* MAIN CONTENT AREA */}
@@ -208,7 +204,7 @@ const FretboardGame: React.FC = () => {
         <div className="flex flex-col items-center min-h-40 justify-center w-full">
            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Find All</p>
 
-           {isSheetMode && gameMode !== 'CHORD' ? (
+            {isSheetMode ? (
               <div className="flex justify-center scale-110 lg:scale-125 origin-center">
                  <SheetMusic
                    notes={targetNotes}
@@ -219,31 +215,23 @@ const FretboardGame: React.FC = () => {
               </div>
            ) : (
               <div className="flex items-baseline flex-wrap justify-center gap-8">
-                {gameMode === 'CHORD' ? (
-                  <div className="flex flex-col items-center relative">
-                    <span className="text-7xl font-black text-slate-900 flex items-baseline">
-                      {targetChord}
-                    </span>
-                  </div>
-                ) : (
-                  targetNotes.map((val, idx) => {
-                      const colorIndex = colorIndices[idx % colorIndices.length];
-                      const color = SAFE_PALETTE[colorIndex];
-                      const { note, octave } = getNoteName(val, roundUseFlats);
+                {targetNotes.map((val, idx) => {
+                    const colorIndex = colorIndices[idx % colorIndices.length];
+                    const color = SAFE_PALETTE[colorIndex];
+                    const { note, octave } = getNoteName(val, roundUseFlats);
 
-                      return (
-                        <div key={idx} className="flex flex-col items-center relative">
-                          <div className={`w-3 h-3 rounded-full mb-3 ${color.bg}`} />
-                          <span className={`text-7xl font-black ${color.text} flex items-baseline`}>
-                              {note}
-                              {gameMode === 'OCTAVE' && (
-                                  <span className="text-4xl font-bold ml-1 opacity-60">{octave}</span>
-                              )}
-                          </span>
-                        </div>
-                      );
-                  })
-                )}
+                    return (
+                      <div key={idx} className="flex flex-col items-center relative">
+                        <div className={`w-3 h-3 rounded-full mb-3 ${color.bg}`} />
+                        <span className={`text-7xl font-black ${color.text} flex items-baseline`}>
+                            {note}
+                            {gameMode === 'OCTAVE' && (
+                                <span className="text-4xl font-bold ml-1 opacity-60">{octave}</span>
+                            )}
+                        </span>
+                      </div>
+                    );
+                })}
               </div>
            )}
         </div>

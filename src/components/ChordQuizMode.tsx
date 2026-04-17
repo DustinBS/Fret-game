@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useChordQuiz } from '../hooks/useChordQuiz';
+import { QUIZ_ROOT_STRING_OPTIONS, useChordQuiz } from '../hooks/useChordQuiz';
 import { getNoteNameFromPitchClass, STRING_NAMES, getIntervalColor, getIntervalHexColor } from '../utils/musicTheory';
 import { Fretboard } from './Fretboard';
 import SheetMusic from './SheetMusic';
@@ -20,6 +20,9 @@ export default function ChordQuizMode() {
     setInputQuality,
     inputShape,
     setInputShape,
+    enabledRootStrings,
+    rootStringConstraintLabel,
+    toggleRootStringConstraint,
     
     
     generateQuiz,
@@ -38,8 +41,10 @@ export default function ChordQuizMode() {
   };
 
   useEffect(() => {
-    generateQuiz();
-  }, [generateQuiz]);
+    if (!quizData) {
+      generateQuiz();
+    }
+  }, [quizData, generateQuiz]);
 
   if (!quizData) return null;
 
@@ -57,14 +62,34 @@ export default function ChordQuizMode() {
           </div>
         </div>
 
-        <div className="flex flex-col items-end lg:items-start">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Streak</span>
-            <span className={`text-3xl font-mono font-bold leading-none ${streak > 0 ? '(Correct)' : '(Miss)'}`}>
-              {streak}
-            </span>
-        </div>
-
           <div className="flex flex-col gap-4 border-t border-slate-200 pt-6">
+            <div>
+              <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">Root String Constraint</label>
+              <div className="grid grid-cols-3 gap-2">
+                {QUIZ_ROOT_STRING_OPTIONS.map((rootString) => {
+                  const checked = enabledRootStrings.includes(rootString);
+
+                  return (
+                    <label
+                      key={rootString}
+                      className={`text-[11px] font-bold border rounded px-2 py-2 flex items-center justify-center gap-1 select-none ${checked ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100 cursor-pointer'}`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={checked}
+                        onChange={() => toggleRootStringConstraint(rootString)}
+                      />
+                      <span>Str {rootString + 1}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-2">
+                Current: {rootStringConstraintLabel}
+              </div>
+            </div>
+
             <div>
               <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">Root Note</label>
               <input 
@@ -124,6 +149,15 @@ export default function ChordQuizMode() {
             )}
           </div>
 
+        <div className="mt-auto pt-4 border-t border-slate-200">
+          <div className="inline-flex flex-col border border-slate-200 rounded bg-white/80 px-2 py-1">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Streak</span>
+              <span className={`text-lg font-mono font-bold leading-none ${streak > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                {streak}
+              </span>
+          </div>
+        </div>
+
 
       </aside>
 
@@ -139,7 +173,7 @@ export default function ChordQuizMode() {
             />
           </div>
 
-          <div className={`flex flex-col items-center justify-center w-64 min-h-[96px] transition-opacity duration-300 ${gameState === 'REVEALED' ? '(Correct)' : '(Miss)'}`}>
+          <div className={`flex flex-col items-center justify-center w-64 min-h-[96px] transition-opacity duration-300 ${gameState === 'REVEALED' ? 'opacity-100' : 'opacity-70'}`}>
             <p className="text-3xl font-black text-slate-800 bg-blue-100 px-4 py-2 rounded shadow-sm">
               {getNoteNameFromPitchClass(quizData.rootPitchClass, quizData.useFlats)} {gameState === 'REVEALED' ? quizData.quality : '—'}
             </p>
@@ -157,7 +191,7 @@ export default function ChordQuizMode() {
             stringIndex: o.string,
             fret: quizData.rootFret + o.offset,
             isAnchor: o.string === quizData.rootString,
-            markerClass: `scale-100 ${getIntervalColor((o as any).interval || '1')} ${o.string === quizData.rootString ? '(Correct)' : '(Miss)'} text-white shadow-sm`,
+            markerClass: `scale-100 ${getIntervalColor((o as any).interval || '1')} ${o.string === quizData.rootString ? 'ring-2 ring-slate-900' : ''} text-white shadow-sm`,
             label: (o as any).interval || '1'
           })) : []}
           onFretClick={() => {}}

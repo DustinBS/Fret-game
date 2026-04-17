@@ -1,11 +1,26 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
 import { getIntervalHexColor, TUNING, getNoteNameFromPitchClass, getKeySignatureInfo, KEY_CONSTRAINT_OPTIONS, keySignatureUsesFlats } from '../utils/musicTheory';
 import { DIATONIC_INTERVALS, CHORD_QUALITY_DIATONIC_MAP } from '../utils/diatonic';
 import { getGalleryOrderedChordDefinitions } from '../utils/chordOrdering';
 import { flashTableRowOverlay, scrollToTargetAndFlash } from '../utils/scrollFeedback';
+import { buildSearchWithUpdates, navigateFromClick } from '../utils/queryNavigation';
+import {
+  readSessionBoolean,
+  readSessionJson,
+  readSessionNumber,
+  restoreScrollTopWithRetries,
+  writeSessionBoolean,
+  writeSessionJson,
+  writeSessionNumber,
+} from '../utils/viewState';
 import SheetMusic from './SheetMusic';
 import { LegendPanel } from './LegendPanel';
+
+const GALLERY_MAIN_SCROLL_KEY = 'fret-gallery-main-scroll';
+const GALLERY_LIST_SCROLL_KEY = 'fret-gallery-list-scroll';
+const GALLERY_SHOW_DIATONIC_KEY = 'fret-gallery-show-diatonic';
+const GALLERY_SELECTED_DIATONIC_KEY = 'fret-gallery-selected-diatonic';
 
 interface GalleryModeProps {
   keyConstraint: string;
@@ -14,9 +29,12 @@ interface GalleryModeProps {
 }
 
 export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyConstraint, useGalleryColors }) => {
-  const [showDiatonic, setShowDiatonic] = useState(true);
-  const [selectedDiatonic, setSelectedDiatonic] = useState<Record<string, string>>({});
+  const [showDiatonic, setShowDiatonic] = useState(() => readSessionBoolean(GALLERY_SHOW_DIATONIC_KEY, true));
+  const [selectedDiatonic, setSelectedDiatonic] = useState<Record<string, string>>(
+    () => readSessionJson<Record<string, string>>(GALLERY_SELECTED_DIATONIC_KEY, {}),
+  );
   const scrollContainerRef = useRef<HTMLElement>(null);
+  const chordListRef = useRef<HTMLDivElement>(null);
 
   const orderedChordDefs = useMemo(() => getGalleryOrderedChordDefinitions(CHORD_DICTIONARY), []);
   const rootObj = useMemo(() => getKeySignatureInfo(keyConstraint), [keyConstraint]);
@@ -39,6 +57,40 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
   };
 
   useEffect(() => {
+    writeSessionBoolean(GALLERY_SHOW_DIATONIC_KEY, showDiatonic);
+  }, [showDiatonic]);
+
+  useEffect(() => {
+    writeSessionJson(GALLERY_SELECTED_DIATONIC_KEY, selectedDiatonic);
+  }, [selectedDiatonic]);
+
+  useLayoutEffect(() => {
+    const cleanupFns: Array<() => void> = [];
+
+    if (chordListRef.current) {
+      cleanupFns.push(
+        restoreScrollTopWithRetries(chordListRef.current, readSessionNumber(GALLERY_LIST_SCROLL_KEY, 0), {
+          maxFrames: 72,
+          stableFrames: 3,
+        }),
+      );
+    }
+
+    if (scrollContainerRef.current) {
+      cleanupFns.push(
+        restoreScrollTopWithRetries(scrollContainerRef.current, readSessionNumber(GALLERY_MAIN_SCROLL_KEY, 0), {
+          maxFrames: 120,
+          stableFrames: 4,
+        }),
+      );
+    }
+
+    return () => {
+      cleanupFns.forEach((cleanup) => cleanup());
+    };
+  }, []);
+
+  useEffect(() => {
     const handleUrlState = () => {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get('tab')?.toLowerCase();
@@ -56,21 +108,22 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
         scrollToQuality(scrollTo);
         params.delete('scrollTo');
         window.history.replaceState({}, '', `?${params.toString()}`);
-      } else if (scrollContainerRef.current) {
-        const savedScroll = sessionStorage.getItem('galleryScroll');
-        if (savedScroll) {
-          scrollContainerRef.current.scrollTop = parseInt(savedScroll, 10);
-        }
       }
     };
 
-    setTimeout(handleUrlState, 100);
+    handleUrlState();
     window.addEventListener('popstate', handleUrlState);
-    return () => window.removeEventListener('popstate', handleUrlState);
+    return () => {
+      window.removeEventListener('popstate', handleUrlState);
+    };
   }, [setKeyConstraint]);
 
-  const handleScroll = (e: React.UIEvent<HTMLElement>) => {
-    sessionStorage.setItem('galleryScroll', e.currentTarget.scrollTop.toString());
+  const handleMainScroll = (e: React.UIEvent<HTMLElement>) => {
+    writeSessionNumber(GALLERY_MAIN_SCROLL_KEY, e.currentTarget.scrollTop);
+  };
+
+  const handleChordListScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    writeSessionNumber(GALLERY_LIST_SCROLL_KEY, e.currentTarget.scrollTop);
   };
 
   return (
@@ -100,7 +153,11 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
 
         <div className="border-t border-slate-200 pt-4">
           <div className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Chord List</div>
-          <div className="max-h-[420px] overflow-y-auto border border-slate-200 rounded bg-white p-1 flex flex-col gap-1">
+          <div
+            ref={chordListRef}
+            onScroll={handleChordListScroll}
+            className="max-h-[420px] overflow-y-auto border border-slate-200 rounded bg-white p-1 flex flex-col gap-1"
+          >
             {orderedChordDefs.map((def) => (
               <button
                 key={def.quality}
@@ -114,7 +171,7 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
         </div>
       </aside>
 
-      <main ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 h-full overflow-y-auto flex flex-col py-1 p-4 lg:p-8 gap-4 min-w-0 bg-slate-100/50">
+      <main ref={scrollContainerRef} onScroll={handleMainScroll} className="flex-1 h-full overflow-y-auto flex flex-col py-1 p-4 lg:p-8 gap-4 min-w-0 bg-slate-100/50">
         <div className="w-full overflow-x-auto bg-white rounded border border-slate-200 shadow-sm">
           <table className="w-full text-left border-collapse min-w-[800px]">
             <thead>
@@ -154,7 +211,7 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
                               {diatonicOptions.map((d) => (
                                 <button
                                   key={d}
-                                  onClick={() => setSelectedDiatonic({ ...selectedDiatonic, [def.quality]: d })}
+                                  onClick={() => setSelectedDiatonic((prev) => ({ ...prev, [def.quality]: d }))}
                                   className={`text-[10px] font-bold tracking-widest px-2 py-1 rounded border transition-colors ${activeDiatonic === d ? 'bg-blue-600 border-blue-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-blue-50'}`}
                                 >
                                   {d}
@@ -196,22 +253,24 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
                       const highestPitch = pitches.length > 0 ? Math.max(...pitches) : 0;
                       const zoomSemitones = highestPitch > 77 ? highestPitch - 77 : 0;
 
-                      const handleCellClick = () => {
-                        const params = new URLSearchParams(window.location.search);
-                        params.set('tab', 'sandbox');
-                        params.set('quality', def.quality);
-                        params.set('rootString', str.toString());
-                        params.set('fretOffset', rootFret.toString());
-                        params.delete('key');
-                        window.history.pushState({}, '', `?${params.toString()}`);
-                        window.dispatchEvent(new Event('popstate'));
+                      const sandboxSearch = buildSearchWithUpdates({
+                        tab: 'sandbox',
+                        quality: def.quality,
+                        rootString: str.toString(),
+                        fretOffset: rootFret.toString(),
+                        key: null,
+                      });
+
+                      const handleCellClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+                        navigateFromClick(event, sandboxSearch);
                       };
 
                       return (
                         <td key={str} className="p-2 text-center align-middle transform scale-90 origin-center">
-                          <div
+                          <button
+                            type="button"
                             onClick={handleCellClick}
-                            className="cursor-pointer border border-transparent hover:border-blue-300 hover:bg-blue-50/50 hover:shadow-sm rounded-lg p-2 transition-all"
+                            className="w-full cursor-pointer border border-transparent hover:border-blue-300 hover:bg-blue-50/50 hover:shadow-sm rounded-lg p-2 transition-all"
                             title={`Open ${actualRootName} ${def.quality} (String ${str + 1}) in Sandbox`}
                           >
                             <SheetMusic
@@ -223,7 +282,7 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
                               suppressDiatonicAccidentals
                               zoomSemitones={zoomSemitones}
                             />
-                          </div>
+                          </button>
                         </td>
                       );
                     })}

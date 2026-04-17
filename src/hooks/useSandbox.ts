@@ -1,14 +1,68 @@
 import { useState, useMemo, useEffect } from 'react';
 import { TUNING, semitoneToIntervalString } from '../utils/musicTheory';
 import { analyzeChord } from '../utils/chordAnalyzer';
+import { readSessionJson, writeSessionJson } from '../utils/viewState';
 
 export type FretPosition = { stringIndex: number; fret: number; interval?: string };
 
+const SANDBOX_STATE_KEY = 'fret-sandbox-state';
+
+interface SandboxPersistedState {
+  clickedFrets: FretPosition[];
+  selectedChordName: string;
+  selectedChordIndex: number;
+  oneNotePerString: boolean;
+}
+
+function normalizePersistedFrets(value: unknown): FretPosition[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const normalized: FretPosition[] = [];
+
+  value.forEach((item) => {
+    if (!item || typeof item !== 'object') {
+      return;
+    }
+
+    const candidate = item as Partial<FretPosition>;
+    if (!Number.isFinite(candidate.stringIndex) || !Number.isFinite(candidate.fret)) {
+      return;
+    }
+
+    const next: FretPosition = {
+      stringIndex: Number(candidate.stringIndex),
+      fret: Number(candidate.fret),
+    };
+
+    if (typeof candidate.interval === 'string') {
+      next.interval = candidate.interval;
+    }
+
+    normalized.push(next);
+  });
+
+  return normalized;
+}
+
 export const useSandbox = () => {
-  const [clickedFrets, setClickedFrets] = useState<FretPosition[]>([]);
-  const [selectedChordName, setSelectedChordName] = useState<string>('');
-  const [selectedChordIndex, setSelectedChordIndex] = useState<number>(0);
-  const [oneNotePerString, setOneNotePerString] = useState<boolean>(true);
+  const persistedState = useMemo(
+    () => readSessionJson<Partial<SandboxPersistedState>>(SANDBOX_STATE_KEY, {}),
+    [],
+  );
+
+  const [clickedFrets, setClickedFrets] = useState<FretPosition[]>(() => normalizePersistedFrets(persistedState.clickedFrets));
+  const [selectedChordName, setSelectedChordName] = useState<string>(() =>
+    typeof persistedState.selectedChordName === 'string' ? persistedState.selectedChordName : '',
+  );
+  const [selectedChordIndex, setSelectedChordIndex] = useState<number>(() => {
+    const value = persistedState.selectedChordIndex;
+    return Number.isFinite(value) && Number(value) >= 0 ? Number(value) : 0;
+  });
+  const [oneNotePerString, setOneNotePerString] = useState<boolean>(() => {
+    return typeof persistedState.oneNotePerString === 'boolean' ? persistedState.oneNotePerString : true;
+  });
 
   const handleFretClick = (stringIndex: number, fret: number) => {
     setSelectedChordIndex(0);
@@ -103,6 +157,15 @@ export const useSandbox = () => {
   const activePitches = useMemo(() => {
     return clickedFrets.map(pos => TUNING[pos.stringIndex] + pos.fret);
   }, [clickedFrets]);
+
+  useEffect(() => {
+    writeSessionJson<SandboxPersistedState>(SANDBOX_STATE_KEY, {
+      clickedFrets,
+      selectedChordName,
+      selectedChordIndex,
+      oneNotePerString,
+    });
+  }, [clickedFrets, selectedChordName, selectedChordIndex, oneNotePerString]);
 
   return {
     clickedFrets: mappedFrets,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useSandbox } from '../hooks/useSandbox';
 import { Fretboard, type FretMarker } from './Fretboard';
 import SheetMusic from './SheetMusic';
@@ -7,6 +7,11 @@ import { getIntervalColor, getIntervalHexColor, getKeySignatureInfo, getNoteName
 import { useHistory, HistoryPanel } from './History';
 import { LegendPanel } from './LegendPanel';
 import { useGlobalKeyConstraint } from '../hooks/useGlobalKey';
+import { buildSearchWithUpdates, navigateFromClick } from '../utils/queryNavigation';
+import { readSessionNumber, readSessionString, restoreScrollTopWithRetries, writeSessionNumber, writeSessionString } from '../utils/viewState';
+
+const SANDBOX_SEARCH_KEY = 'fret-sandbox-search';
+const SANDBOX_LIBRARY_SCROLL_KEY = 'fret-sandbox-library-scroll';
 
 const SandboxMode: React.FC = () => {
   const {
@@ -26,7 +31,8 @@ const SandboxMode: React.FC = () => {
   const { history, addHistory, clearHistory } = useHistory<any>('sandboxHistory');
   const [keyConstraint] = useGlobalKeyConstraint('C');
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => readSessionString(SANDBOX_SEARCH_KEY, ''));
+  const chordLibraryRef = useRef<HTMLDivElement>(null);
 
   const STRING_NAMES: Record<number, string> = {
     5: "Str 6E",
@@ -36,6 +42,25 @@ const SandboxMode: React.FC = () => {
     1: "Str 2B",
     0: "Str 1e"
   };
+
+  useEffect(() => {
+    writeSessionString(SANDBOX_SEARCH_KEY, search);
+  }, [search]);
+
+  useLayoutEffect(() => {
+    if (!chordLibraryRef.current) {
+      return;
+    }
+
+    return restoreScrollTopWithRetries(
+      chordLibraryRef.current,
+      readSessionNumber(SANDBOX_LIBRARY_SCROLL_KEY, 0),
+      {
+        maxFrames: 72,
+        stableFrames: 3,
+      },
+    );
+  }, []);
 
   useEffect(() => {
     const handleUrlState = () => {
@@ -68,6 +93,10 @@ const SandboxMode: React.FC = () => {
   const filteredChords = CHORD_DICTIONARY.filter(c => 
     c.quality.toLowerCase().includes(search.toLowerCase())
   );
+
+  const handleChordLibraryScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    writeSessionNumber(SANDBOX_LIBRARY_SCROLL_KEY, event.currentTarget.scrollTop);
+  };
 
   const markers: FretMarker[] = clickedFrets.map(p => ({
     stringIndex: p.stringIndex,
@@ -152,7 +181,11 @@ const SandboxMode: React.FC = () => {
             </div>
           </label>
 
-          <div className="h-[300px] overflow-y-auto border border-slate-200 bg-white rounded flex flex-col">
+          <div
+            ref={chordLibraryRef}
+            onScroll={handleChordLibraryScroll}
+            className="h-[300px] overflow-y-auto border border-slate-200 bg-white rounded flex flex-col"
+          >
             {filteredChords.map(def => (
                <div key={def.quality} className="border-b border-slate-100 last:border-0 p-2">
                  <div className="font-bold text-sm mb-1">{def.quality}</div>
@@ -208,7 +241,7 @@ const SandboxMode: React.FC = () => {
                       Save Chord
                     </button>
                     <button 
-                      onClick={() => {
+                      onClick={(event) => {
                         const chord = analyzedChords[selectedChordIndex];
                         if (!chord) return;
                         const namePart = chord.name.split('/')[0].trim();
@@ -219,12 +252,12 @@ const SandboxMode: React.FC = () => {
                         let originalQuality = match[2].trim();
                         let galleryQuality = originalQuality;
 
-                        const params = new URLSearchParams(window.location.search);
-                        params.set('tab', 'gallery');
-                        params.set('key', key);
-                        params.set('scrollTo', galleryQuality);
-                        window.history.pushState({}, '', '?' + params.toString());
-                        window.dispatchEvent(new Event('popstate'));
+                        const gallerySearch = buildSearchWithUpdates({
+                          tab: 'gallery',
+                          key,
+                          scrollTo: galleryQuality,
+                        });
+                        navigateFromClick(event, gallerySearch);
                       }}
                       className="text-[10px] px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded uppercase tracking-widest transition"
                     >

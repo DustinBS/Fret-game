@@ -1,7 +1,8 @@
 // src/components/FretboardGame.native.tsx
 import React, { useState } from 'react';
 import { View, Text, Pressable, Modal } from 'react-native';
-import { useFretboardGame, getNoteName } from '../hooks/useFretboardGame';
+import { useFretboardGame } from '../hooks/useFretboardGame';
+import { getNoteName } from '../utils/musicTheory';
 import SheetMusic from './SheetMusic';
 import { Fretboard, type FretMarker } from './Fretboard';
 
@@ -27,7 +28,6 @@ const FretboardGame = () => {
     isSheetMode, setIsSheetMode, isHiddenMode, setIsHiddenMode,
     anchorFret, windowStart, windowEnd, clickedFrets, gameState,
     streak, handleFretClick, submitGuess, clearGuesses, generateNewRound, TUNING,
-    targetChord,
   } = useFretboardGame(3);
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -40,7 +40,6 @@ const FretboardGame = () => {
   const getGameModeName = (mode: string) => {
     if (mode === 'WINDOW') return 'Position';
     if (mode === 'OCTAVE') return 'Octave';
-    if (mode === 'CHORD') return 'Chord';
     return '';
   }
 
@@ -55,7 +54,7 @@ const FretboardGame = () => {
       let isTarget = false;
       let colorIndex = 0;
 
-      if (gameMode === 'WINDOW' || gameMode === 'CHORD') {
+        if (gameMode === 'WINDOW') {
           const targetIdx = targetNotes.indexOf(pitch % 12);
           isTarget = targetIdx !== -1;
           if (isTarget) colorIndex = colorIndices[targetIdx % colorIndices.length];
@@ -119,7 +118,7 @@ const FretboardGame = () => {
         {/* CENTER: Targets */}
         {/* pb-0 ensures no padding lifts the music up */}
         <View className="flex-1 items-center justify-end h-full pb-0">
-            {isSheetMode && gameMode !== 'CHORD' ? (
+          {isSheetMode ? (
                // SCALE + TRANSLATE:
                // scale-75 shrinks it.
                // translateY-15 pushes it down 15px to counteract the "lift" from scaling center.
@@ -131,19 +130,15 @@ const FretboardGame = () => {
                </View>
             ) : (
                <View className="flex-row gap-1 flex-wrap justify-center mb-4">
-                {gameMode === 'CHORD' ? (
-                  <Text className="text-2xl font-black text-slate-900">{targetChord}</Text>
-                ) : (
-                  targetNotes.map((val, idx) => {
-                    const color = SAFE_PALETTE[colorIndices[idx % colorIndices.length]];
-                    const { note } = getNoteName(val, roundUseFlats);
-                    return (
-                      <View key={idx} className={`w-8 h-8 rounded-full ${color.bg} items-center justify-center shadow-sm`}>
-                          <Text className="text-white font-bold text-sm">{note}</Text>
-                      </View>
-                    );
-                  })
-                )}
+                {targetNotes.map((val, idx) => {
+                  const color = SAFE_PALETTE[colorIndices[idx % colorIndices.length]];
+                  const { note } = getNoteName(val, roundUseFlats);
+                  return (
+                    <View key={idx} className={`w-8 h-8 rounded-full ${color.bg} items-center justify-center shadow-sm`}>
+                        <Text className="text-white font-bold text-sm">{note}</Text>
+                    </View>
+                  );
+                })}
                </View>
             )}
         </View>
@@ -198,7 +193,7 @@ const FretboardGame = () => {
                     </View>
                  </View>
 
-                 <ToggleRow label="Sheet Music Mode" checked={isSheetMode} onChange={setIsSheetMode} disabled={gameMode === 'CHORD'} />
+                 <ToggleRow label="Sheet Music Mode" checked={isSheetMode} onChange={setIsSheetMode} />
                  <ToggleRow label="Hide Guesses" checked={isHiddenMode} onChange={setIsHiddenMode} />
 
                  <Pressable onPress={toggleGameMode} className="bg-blue-50 p-4 rounded-lg flex-row justify-between">

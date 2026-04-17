@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import SheetMusic from './SheetMusic';
 import { LegendPanel } from './LegendPanel';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
@@ -6,11 +6,36 @@ import { CHORD_QUALITY_DIATONIC_MAP, DIATONIC_INTERVALS } from '../utils/diatoni
 import { TUNING, getIntervalHexColor, getKeySignatureInfo, getNoteNameFromPitchClass, keySignatureUsesFlats } from '../utils/musicTheory';
 import { getGalleryOrderedChordDefinitions } from '../utils/chordOrdering';
 import { flashElementOutline, scrollToTargetAndFlash } from '../utils/scrollFeedback';
+import { buildSearchWithUpdates, navigateFromClick } from '../utils/queryNavigation';
+import {
+  readSessionJson,
+  readSessionNumber,
+  readSessionString,
+  restoreScrollTopWithRetries,
+  writeSessionJson,
+  writeSessionNumber,
+  writeSessionString,
+} from '../utils/viewState';
 import type { ChordShape } from '../utils/chordLibrary.types';
 import { buildVisualArchetypeGroups, type VisualArchetypeGroup, type VisualArchetypeMember } from '../utils/visualArchetypes';
 
 const SHEET_MAX_PITCH = 77;
 const DIATONIC_DISPLAY_ORDER = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'viio'];
+const VISUAL_ROOT_FILTER_KEY = 'fret-visual-root-filter';
+const VISUAL_CHORD_SEARCH_KEY = 'fret-visual-chord-search';
+const VISUAL_SELECTED_DIATONIC_KEY = 'fret-visual-selected-diatonic';
+const VISUAL_LIST_SCROLL_KEY = 'fret-visual-list-scroll';
+const VISUAL_CONTENT_SCROLL_KEY = 'fret-visual-content-scroll';
+
+type RootStringFilter = 'ALL' | 5 | 4 | 3 | 2;
+
+function parseRootStringFilter(value: string | null): RootStringFilter {
+  if (value === '5' || value === '4' || value === '3' || value === '2') {
+    return Number(value) as RootStringFilter;
+  }
+
+  return 'ALL';
+}
 
 interface VisualArchetypeModeProps {
   keyConstraint: string;
@@ -90,10 +115,15 @@ function getActiveMemberForDiatonic(
 }
 
 const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint, useGalleryColors }) => {
-  const [rootStringFilter, setRootStringFilter] = useState<'ALL' | 5 | 4 | 3 | 2>('ALL');
-  const [selectedDiatonicByGroup, setSelectedDiatonicByGroup] = useState<Record<string, string>>({});
-  const [chordSearch, setChordSearch] = useState('');
+  const [rootStringFilter, setRootStringFilter] = useState<RootStringFilter>(() => {
+    return parseRootStringFilter(readSessionString(VISUAL_ROOT_FILTER_KEY, 'ALL'));
+  });
+  const [selectedDiatonicByGroup, setSelectedDiatonicByGroup] = useState<Record<string, string>>(
+    () => readSessionJson<Record<string, string>>(VISUAL_SELECTED_DIATONIC_KEY, {}),
+  );
+  const [chordSearch, setChordSearch] = useState(() => readSessionString(VISUAL_CHORD_SEARCH_KEY, ''));
   const scrollContainerRef = useRef<HTMLElement>(null);
+  const chordListRef = useRef<HTMLDivElement>(null);
 
   const rootObj = useMemo(() => getKeySignatureInfo(keyConstraint), [keyConstraint]);
   const notationUsesFlats = useMemo(() => keySignatureUsesFlats(rootObj.renderableKeyName), [rootObj.renderableKeyName]);
@@ -119,6 +149,52 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
     return groups.filter((group) => group.rootString === rootStringFilter);
   }, [groups, rootStringFilter]);
 
+  const availableChordQualities = useMemo(() => {
+    const qualitySet = new Set<string>();
+    filteredGroups.forEach((group) => {
+      group.members.forEach((member) => qualitySet.add(member.quality));
+    });
+    return qualitySet;
+  }, [filteredGroups]);
+
+  useEffect(() => {
+    writeSessionString(VISUAL_ROOT_FILTER_KEY, String(rootStringFilter));
+  }, [rootStringFilter]);
+
+  useEffect(() => {
+    writeSessionString(VISUAL_CHORD_SEARCH_KEY, chordSearch);
+  }, [chordSearch]);
+
+  useEffect(() => {
+    writeSessionJson(VISUAL_SELECTED_DIATONIC_KEY, selectedDiatonicByGroup);
+  }, [selectedDiatonicByGroup]);
+
+  useLayoutEffect(() => {
+    const cleanupFns: Array<() => void> = [];
+
+    if (chordListRef.current) {
+      cleanupFns.push(
+        restoreScrollTopWithRetries(chordListRef.current, readSessionNumber(VISUAL_LIST_SCROLL_KEY, 0), {
+          maxFrames: 72,
+          stableFrames: 3,
+        }),
+      );
+    }
+
+    if (scrollContainerRef.current) {
+      cleanupFns.push(
+        restoreScrollTopWithRetries(scrollContainerRef.current, readSessionNumber(VISUAL_CONTENT_SCROLL_KEY, 0), {
+          maxFrames: 90,
+          stableFrames: 3,
+        }),
+      );
+    }
+
+    return () => {
+      cleanupFns.forEach((cleanup) => cleanup());
+    };
+  }, []);
+
   const scrollToQuality = (quality: string) => {
     if (!scrollContainerRef.current) {
       return;
@@ -139,15 +215,27 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
     }
   };
 
-  const openInSandbox = (member: VisualArchetypeMember, rootPitchClass: number) => {
+  const handleContentScroll = (e: React.UIEvent<HTMLElement>) => {
+    writeSessionNumber(VISUAL_CONTENT_SCROLL_KEY, e.currentTarget.scrollTop);
+  };
+
+  const handleChordListScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    writeSessionNumber(VISUAL_LIST_SCROLL_KEY, e.currentTarget.scrollTop);
+  };
+
+  const openInSandbox = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    member: VisualArchetypeMember,
+    rootPitchClass: number,
+  ) => {
     const fretOffset = resolveRootFretForShape(rootPitchClass, member.shape);
-    const params = new URLSearchParams(window.location.search);
-    params.set('tab', 'sandbox');
-    params.set('quality', member.quality);
-    params.set('rootString', member.rootString.toString());
-    params.set('fretOffset', fretOffset.toString());
-    window.history.pushState({}, '', `?${params.toString()}`);
-    window.dispatchEvent(new Event('popstate'));
+    const sandboxSearch = buildSearchWithUpdates({
+      tab: 'sandbox',
+      quality: member.quality,
+      rootString: member.rootString.toString(),
+      fretOffset: fretOffset.toString(),
+    });
+    navigateFromClick(event, sandboxSearch);
   };
 
   return (
@@ -175,12 +263,7 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
             id="visual-root-string"
             value={String(rootStringFilter)}
             onChange={(e) => {
-              const value = e.target.value;
-              if (value === 'ALL') {
-                setRootStringFilter('ALL');
-              } else {
-                setRootStringFilter(Number(value) as 5 | 4 | 3 | 2);
-              }
+              setRootStringFilter(parseRootStringFilter(e.target.value));
             }}
             className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
           >
@@ -201,21 +284,36 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
             placeholder="e.g. min9"
             className="w-full p-2 border border-slate-300 rounded text-sm bg-white"
           />
-          <div className="mt-2 max-h-[280px] overflow-y-auto border border-slate-200 rounded bg-white p-1 flex flex-col gap-1">
-            {filteredChordList.map((def) => (
-              <button
-                key={def.quality}
-                onClick={() => scrollToQuality(def.quality)}
-                className="text-left text-xs font-bold px-2 py-1 rounded hover:bg-blue-50 text-slate-700"
-              >
-                {def.quality}
-              </button>
-            ))}
+          <div
+            ref={chordListRef}
+            onScroll={handleChordListScroll}
+            className="mt-2 max-h-[280px] overflow-y-auto border border-slate-200 rounded bg-white p-1 flex flex-col gap-1"
+          >
+            {filteredChordList.map((def) => {
+              const isAvailable = availableChordQualities.has(def.quality);
+
+              return (
+                <button
+                  key={def.quality}
+                  onClick={() => {
+                    if (isAvailable) {
+                      scrollToQuality(def.quality);
+                    }
+                  }}
+                  disabled={!isAvailable}
+                  className={`text-left text-xs font-bold px-2 py-1 rounded flex items-center justify-between ${isAvailable ? 'hover:bg-blue-50 text-slate-700 cursor-pointer' : 'bg-slate-50 text-slate-400 cursor-not-allowed'}`}
+                  title={isAvailable ? `Scroll to ${def.quality}` : `No archetype available for ${def.quality} in this filter`}
+                >
+                  <span>{def.quality}</span>
+                  {!isAvailable ? <span className="text-[10px] uppercase tracking-wider">N/A</span> : null}
+                </button>
+              );
+            })}
           </div>
         </div>
       </aside>
 
-      <main ref={scrollContainerRef} className="flex-1 h-full overflow-y-auto p-4 lg:p-8 bg-slate-100/50">
+      <main ref={scrollContainerRef} onScroll={handleContentScroll} className="flex-1 h-full overflow-y-auto p-4 lg:p-8 bg-slate-100/50">
         <div className="flex flex-col gap-4">
           {filteredGroups.length === 0 ? (
             <div className="border border-dashed border-slate-300 rounded-lg bg-white p-8 text-center text-slate-500 font-semibold">
@@ -294,7 +392,7 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
                           return (
                             <button
                               key={`${member.quality}-${member.rootString}-${member.shapeIndex}`}
-                              onClick={() => openInSandbox(member, previewRootPitchClass)}
+                              onClick={(event) => openInSandbox(event, member, previewRootPitchClass)}
                               className={`text-left border rounded px-3 py-2 transition-colors ${isActive ? 'border-blue-600 ring-2 ring-blue-500/30 bg-white' : 'border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-300'}`}
                               title={`Open ${member.quality} on string ${member.rootString + 1} in Sandbox`}
                             >

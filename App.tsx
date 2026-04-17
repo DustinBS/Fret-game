@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type MouseEvent } from 'react';
 import { useGlobalKeyConstraint } from './src/hooks/useGlobalKey';
 import FretboardGame from './src/components/FretboardGame';
 import SandboxMode from './src/components/SandboxMode';
@@ -6,6 +6,7 @@ import ChordQuizMode from './src/components/ChordQuizMode';
 import GalleryMode from './src/components/GalleryMode';
 import VisualArchetypeMode from './src/components/VisualArchetypeMode';
 import { KEY_CONSTRAINT_OPTIONS, getKeySignatureInfo } from './src/utils/musicTheory';
+import { buildSearchWithUpdates, navigateFromClick } from './src/utils/queryNavigation';
 
 function App() {
   const [activeTab, setActiveTabState] = useState<'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY' | 'VISUAL_ARCHETYPE'>('TRAINER');
@@ -46,12 +47,15 @@ function App() {
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
-  const setActiveTab = (tab: 'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY' | 'VISUAL_ARCHETYPE') => {
-    const params = new URLSearchParams(window.location.search);
-    params.set('tab', tab === 'VISUAL_ARCHETYPE' ? 'visualarchetype' : tab.toLowerCase());
-    window.history.pushState({}, '', '?' + params.toString());
-    setActiveTabState(tab);
-    window.dispatchEvent(new Event('popstate'));
+  const getTabSearch = (tab: 'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY' | 'VISUAL_ARCHETYPE') => {
+    return buildSearchWithUpdates({ tab: tab === 'VISUAL_ARCHETYPE' ? 'visualarchetype' : tab.toLowerCase() });
+  };
+
+  const handleTabClick = (
+    event: MouseEvent<HTMLButtonElement>,
+    tab: 'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY' | 'VISUAL_ARCHETYPE',
+  ) => {
+    navigateFromClick(event, getTabSearch(tab));
   };
 
   return (
@@ -59,31 +63,31 @@ function App() {
       {/* Top Navbar */}
       <nav className="flex space-x-4 border-b border-slate-200 px-6 py-3 bg-slate-50 items-center">
         <button 
-          onClick={() => setActiveTab('TRAINER')}
+          onClick={(event) => handleTabClick(event, 'TRAINER')}
           className={`text-sm font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${activeTab === 'TRAINER' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-200'}`}
         >
           Trainer
         </button>
         <button 
-          onClick={() => setActiveTab('SANDBOX')}
+          onClick={(event) => handleTabClick(event, 'SANDBOX')}
           className={`text-sm font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${activeTab === 'SANDBOX' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-200'}`}
         >
           Sandbox
         </button>
         <button 
-          onClick={() => setActiveTab('QUIZ')}
+          onClick={(event) => handleTabClick(event, 'QUIZ')}
           className={`text-sm font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${activeTab === 'QUIZ' ? 'bg-green-600 text-white' : 'text-slate-500 hover:bg-slate-200'}`}
         >
           Quiz
         </button>
         <button 
-          onClick={() => setActiveTab('GALLERY')}
+          onClick={(event) => handleTabClick(event, 'GALLERY')}
           className={`text-sm font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${activeTab === 'GALLERY' ? 'bg-purple-600 text-white' : 'text-slate-500 hover:bg-slate-200'}`}
         >
           Gallery
         </button>
         <button 
-          onClick={() => setActiveTab('VISUAL_ARCHETYPE')}
+          onClick={(event) => handleTabClick(event, 'VISUAL_ARCHETYPE')}
           className={`text-sm font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${activeTab === 'VISUAL_ARCHETYPE' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-200'}`}
         >
           Visual Archetype

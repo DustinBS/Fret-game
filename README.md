@@ -34,19 +34,17 @@ https://dustinbs.github.io/Fret-game/
 
 ## Local APK Build + Install (No Cloud)
 
-- Local debug APK install (fast iteration):
-    - `npm run android_local_debug`
 - Local release APK install (standalone app behavior, still local):
     - `npm run android_local_release`
-- Optional wireless pairing helper (then run one of the commands above):
+- Optional wireless pairing helper (release-only):
     - `npm run android_wireless_setup`
 
 Notes:
 - These scripts build locally with Gradle and install directly with `adb`; they do not use EAS cloud build.
 - On first run, if `android/` does not exist, the script auto-runs Expo prebuild to generate native Android files.
 - Local release signing uses debug-keystore fallback so release APK can be installed directly on your phone.
+- Release deploy is the only supported local install path to avoid Metro-dependent debug startup failures.
 - If multiple devices are connected, you can force a target serial:
-    - `npm run android_local_debug -- RFCX41PENZW`
     - `npm run android_local_release -- RFCX41PENZW`
 - If install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the script automatically uninstalls the conflicting app and retries install.
 - Build speed tuning is set for real phones by default:

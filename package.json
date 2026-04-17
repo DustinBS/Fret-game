@@ -12,7 +12,6 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
     "android": "npx expo start --android",
-    "android_local_debug": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy-local-android-debug.ps1",
     "android_local_release": "powershell -ExecutionPolicy Bypass -File ./scripts/deploy-local-android-release.ps1",
     "android_wireless_setup": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-wireless-adb.ps1",
     "ios": "npx expo start --ios",

@@ -405,31 +405,33 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
       <Modal visible={isRootFilterOpen} animationType="slide" transparent onRequestClose={() => setIsRootFilterOpen(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalSheet}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Root String Filter</Text>
-              <Pressable onPress={() => setIsRootFilterOpen(false)} hitSlop={8}>
-                <Text style={styles.modalClose}>Close</Text>
-              </Pressable>
-            </View>
+            <ScrollView contentContainerStyle={styles.modalSheetContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Root String Filter</Text>
+                <Pressable onPress={() => setIsRootFilterOpen(false)} hitSlop={8}>
+                  <Text style={styles.modalClose}>Close</Text>
+                </Pressable>
+              </View>
 
-            <View style={styles.filterRow}>
-              {ROOT_FILTER_OPTIONS.map((option) => {
-                const active = rootStringFilter === option;
-                const label = option === 'ALL' ? 'All' : `Str ${option + 1}`;
-                return (
-                  <Pressable
-                    key={String(option)}
-                    onPress={() => {
-                      setRootStringFilter(option);
-                      setIsRootFilterOpen(false);
-                    }}
-                    style={[styles.filterChip, active ? styles.filterChipActive : null]}
-                  >
-                    <Text style={[styles.filterChipText, active ? styles.filterChipTextActive : null]}>{label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+              <View style={styles.filterRow}>
+                {ROOT_FILTER_OPTIONS.map((option) => {
+                  const active = rootStringFilter === option;
+                  const label = option === 'ALL' ? 'All' : `Str ${option + 1}`;
+                  return (
+                    <Pressable
+                      key={String(option)}
+                      onPress={() => {
+                        setRootStringFilter(option);
+                        setIsRootFilterOpen(false);
+                      }}
+                      style={[styles.filterChip, active ? styles.filterChipActive : null]}
+                    >
+                      <Text style={[styles.filterChipText, active ? styles.filterChipTextActive : null]}>{label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -531,6 +533,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 14,
     paddingBottom: 24,
+  },
+  modalSheetContent: {
+    paddingBottom: 10,
   },
   modalHeader: {
     flexDirection: 'row',

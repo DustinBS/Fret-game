@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFretboardGame } from '../hooks/useFretboardGame';
 import { getNoteName } from '../utils/musicTheory';
 import SheetMusic from './SheetMusic';
@@ -171,41 +171,43 @@ const FretboardGame = () => {
       <Modal animationType="slide" transparent visible={isMenuOpen} onRequestClose={() => setIsMenuOpen(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalSheet}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Trainer Menu</Text>
-              <Pressable onPress={() => setIsMenuOpen(false)} hitSlop={8}>
-                <Text style={styles.modalClose}>Close</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.noteCountRow}>
-              <Text style={styles.settingLabel}>Note Count</Text>
-              <View style={styles.counterWrap}>
-                <Pressable onPress={() => updateNoteCount(-1)} style={styles.counterButton}>
-                  <Text style={styles.counterButtonText}>-</Text>
-                </Pressable>
-                <Text style={styles.counterValue}>{noteCount}</Text>
-                <Pressable onPress={() => updateNoteCount(1)} style={styles.counterButton}>
-                  <Text style={styles.counterButtonText}>+</Text>
+            <ScrollView contentContainerStyle={styles.modalSheetContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Trainer Menu</Text>
+                <Pressable onPress={() => setIsMenuOpen(false)} hitSlop={8}>
+                  <Text style={styles.modalClose}>Close</Text>
                 </Pressable>
               </View>
-            </View>
 
-            <ToggleRow label="Hide Guesses" checked={isHiddenMode} onChange={setIsHiddenMode} />
+              <View style={styles.noteCountRow}>
+                <Text style={styles.settingLabel}>Note Count</Text>
+                <View style={styles.counterWrap}>
+                  <Pressable onPress={() => updateNoteCount(-1)} style={styles.counterButton}>
+                    <Text style={styles.counterButtonText}>-</Text>
+                  </Pressable>
+                  <Text style={styles.counterValue}>{noteCount}</Text>
+                  <Pressable onPress={() => updateNoteCount(1)} style={styles.counterButton}>
+                    <Text style={styles.counterButtonText}>+</Text>
+                  </Pressable>
+                </View>
+              </View>
 
-            <Pressable onPress={toggleGameMode} style={styles.menuActionButton}>
-              <Text style={styles.menuActionLabel}>Game Mode</Text>
-              <Text style={styles.menuActionValue}>{gameMode === 'WINDOW' ? 'Position' : 'Octave'}</Text>
-            </Pressable>
+              <ToggleRow label="Hide Guesses" checked={isHiddenMode} onChange={setIsHiddenMode} />
 
-            <Pressable onPress={cycleAccidentalMode} style={styles.menuActionButton}>
-              <Text style={styles.menuActionLabel}>Accidentals</Text>
-              <Text style={styles.menuActionValue}>{accidentalMode}</Text>
-            </Pressable>
+              <Pressable onPress={toggleGameMode} style={styles.menuActionButton}>
+                <Text style={styles.menuActionLabel}>Game Mode</Text>
+                <Text style={styles.menuActionValue}>{gameMode === 'WINDOW' ? 'Position' : 'Octave'}</Text>
+              </Pressable>
 
-            <Pressable onPress={clearGuesses} style={[styles.menuActionButton, styles.clearActionButton]}>
-              <Text style={[styles.menuActionLabel, styles.clearActionLabel]}>Clear Guesses</Text>
-            </Pressable>
+              <Pressable onPress={cycleAccidentalMode} style={styles.menuActionButton}>
+                <Text style={styles.menuActionLabel}>Accidentals</Text>
+                <Text style={styles.menuActionValue}>{accidentalMode}</Text>
+              </Pressable>
+
+              <Pressable onPress={clearGuesses} style={[styles.menuActionButton, styles.clearActionButton]}>
+                <Text style={[styles.menuActionLabel, styles.clearActionLabel]}>Clear Guesses</Text>
+              </Pressable>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -344,13 +346,17 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalSheet: {
+    maxHeight: '90%',
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     paddingHorizontal: 14,
     paddingTop: 14,
-    paddingBottom: 24,
+    paddingBottom: 12,
+  },
+  modalSheetContent: {
     gap: 10,
+    paddingBottom: 16,
   },
   modalHeader: {
     flexDirection: 'row',

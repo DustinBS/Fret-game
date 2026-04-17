@@ -32,18 +32,27 @@ https://dustinbs.github.io/Fret-game/
 - Compact control bands in Trainer: target/controls were reduced in height so fretboard remains the dominant visual region.
 - Mode and key controls remain available but are intentionally de-emphasized while practicing.
 
-## Mobile Deploy (Wireless ADB)
+## Local APK Build + Install (No Cloud)
 
-- Run `npm run deploy_mobile` to launch Expo Android against an attached ADB device.
-- Run `npm run deploy_mobile_help` to print all script options.
-- If your device is connected over Wi-Fi, pass the wireless endpoint as the first argument:
-    - `npm run deploy_mobile -- 192.168.1.25:5555`
-- Or set an environment variable instead of passing CLI args:
-    - PowerShell: `$env:ANDROID_DEVICE_IP='192.168.1.25:5555'; npm run deploy_mobile`
-- If wireless ADB is unavailable, simplest alternatives are:
-    - `npm run start` and scan QR in Expo Go over LAN
-    - `npx expo start --tunnel` for restrictive networks
-    - `npm run android` over USB
+- Local debug APK install (fast iteration):
+    - `npm run android_local_debug`
+- Local release APK install (standalone app behavior, still local):
+    - `npm run android_local_release`
+- Optional wireless pairing helper (then run one of the commands above):
+    - `npm run android_wireless_setup`
+
+Notes:
+- These scripts build locally with Gradle and install directly with `adb`; they do not use EAS cloud build.
+- On first run, if `android/` does not exist, the script auto-runs Expo prebuild to generate native Android files.
+- Local release signing uses debug-keystore fallback so release APK can be installed directly on your phone.
+- If multiple devices are connected, you can force a target serial:
+    - `npm run android_local_debug -- RFCX41PENZW`
+    - `npm run android_local_release -- RFCX41PENZW`
+- If install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the script automatically uninstalls the conflicting app and retries install.
+- Build speed tuning is set for real phones by default:
+    - Gradle cache and parallel execution are enabled.
+    - Default Android ABIs are arm-only (`armeabi-v7a,arm64-v8a`).
+    - If you need emulator ABIs, temporarily set `reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64` in `android/gradle.properties`.
 
 ## 1\. Game Concept & Mission
 

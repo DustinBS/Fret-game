@@ -144,6 +144,17 @@ export const Fretboard: React.FC<FretboardProps> = ({
                 <View style={[styles.boardShell, { width: boardWidth }]}> 
                     <View style={styles.boardEdgeTop} />
                     <View style={styles.boardCore}>
+                        <View style={styles.fretNumberRow}>
+                            {Array.from({ length: numFrets }).map((_, fret) => {
+                                const activeAnchor = anchorFretSet.has(fret);
+                                return (
+                                    <View key={fret} style={[styles.fretNumberCell, { width: fretWidth }]}>
+                                        <Text style={[styles.fretNumberText, activeAnchor ? styles.fretNumberAnchor : null]}>{fret}</Text>
+                                    </View>
+                                );
+                            })}
+                        </View>
+
                         {[0, 1, 2, 3, 4, 5].map((sIdx) => (
                             <View key={sIdx} style={styles.stringRow}>
                                 <View style={[styles.stringLine, { height: STRING_THICKNESS[sIdx] }]} />
@@ -184,17 +195,6 @@ export const Fretboard: React.FC<FretboardProps> = ({
                                 })}
                             </View>
                         ))}
-
-                        <View style={styles.fretNumberRow}>
-                            {Array.from({ length: numFrets }).map((_, fret) => {
-                                const activeAnchor = anchorFretSet.has(fret);
-                                return (
-                                    <View key={fret} style={[styles.fretNumberCell, { width: fretWidth }]}>
-                                        <Text style={[styles.fretNumberText, activeAnchor ? styles.fretNumberAnchor : null]}>{fret}</Text>
-                                    </View>
-                                );
-                            })}
-                        </View>
                     </View>
                     <View style={styles.boardEdgeBottom} />
                 </View>
@@ -213,8 +213,8 @@ const styles = StyleSheet.create({
         borderColor: '#cbd5e1',
     },
     scrollContent: {
-        paddingHorizontal: 10,
-        paddingVertical: 10,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
     },
     boardShell: {
         borderRadius: 12,
@@ -224,11 +224,11 @@ const styles = StyleSheet.create({
         backgroundColor: '#f8fafc',
     },
     boardEdgeTop: {
-        height: 10,
+        height: 8,
         backgroundColor: '#5D4037',
     },
     boardEdgeBottom: {
-        height: 10,
+        height: 8,
         backgroundColor: '#5D4037',
     },
     boardCore: {
@@ -236,16 +236,18 @@ const styles = StyleSheet.create({
         backgroundColor: '#f8fafc',
     },
     stringRow: {
-        height: 42,
+        height: 36,
         flexDirection: 'row',
         alignItems: 'center',
         position: 'relative',
+        backgroundColor: '#ffffff',
     },
     stringLine: {
         position: 'absolute',
         width: '100%',
         backgroundColor: '#0f172a',
         opacity: 0.85,
+        zIndex: 1,
     },
     fretCell: {
         height: '100%',
@@ -253,11 +255,11 @@ const styles = StyleSheet.create({
         borderRightColor: '#94a3b8',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#ffffff',
+        backgroundColor: 'transparent',
+        zIndex: 2,
     },
     inactiveFret: {
-        backgroundColor: '#e2e8f0',
-        opacity: 0.65,
+        backgroundColor: 'rgba(226, 232, 240, 0.65)',
     },
     nutFret: {
         borderRightWidth: 6,
@@ -265,28 +267,29 @@ const styles = StyleSheet.create({
     },
     inlayDot: {
         position: 'absolute',
-        width: 10,
-        height: 10,
+        width: 8,
+        height: 8,
         borderRadius: 999,
         backgroundColor: '#cbd5e1',
         opacity: 0.9,
+        zIndex: 2,
     },
     anchorMarker: {
         position: 'absolute',
-        width: 9,
-        height: 9,
+        width: 8,
+        height: 8,
         backgroundColor: '#dc2626',
         borderRadius: 2,
         opacity: 0.9,
-        zIndex: 1,
+        zIndex: 3,
     },
     marker: {
-        width: 26,
-        height: 26,
+        width: 24,
+        height: 24,
         borderRadius: 999,
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 2,
+        zIndex: 4,
     },
     markerHidden: {
         opacity: 0,
@@ -301,17 +304,19 @@ const styles = StyleSheet.create({
         fontWeight: '800',
     },
     fretNumberRow: {
-        height: 18,
+        height: 14,
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#f1f5f9',
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: '#cbd5e1',
     },
     fretNumberCell: {
         alignItems: 'center',
         justifyContent: 'center',
     },
     fretNumberText: {
-        fontSize: 9,
+        fontSize: 8,
         color: '#94a3b8',
         fontWeight: '700',
     },

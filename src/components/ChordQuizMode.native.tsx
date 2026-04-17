@@ -58,12 +58,14 @@ const ChordQuizMode: React.FC = () => {
           onPress={() => {
             if (gameState === 'PLAYING') {
               setGameState('REVEALED');
+            } else {
+              generateQuiz();
             }
           }}
           style={[styles.headerButton, gameState === 'REVEALED' ? styles.headerButtonActive : null]}
         >
           <Text style={[styles.headerButtonText, gameState === 'REVEALED' ? styles.headerButtonTextActive : null]}>
-            Actual Answer
+            {gameState === 'PLAYING' ? 'Actual Answer' : 'Next Round'}
           </Text>
         </Pressable>
 
@@ -72,7 +74,7 @@ const ChordQuizMode: React.FC = () => {
           style={[styles.headerButton, styles.submitHeaderButton]}
         >
           <Text style={[styles.headerButtonText, styles.submitHeaderButtonText]}>
-            {gameState === 'PLAYING' ? 'Submit Answer' : 'Next Quiz'}
+            Submit Answer
           </Text>
         </Pressable>
 
@@ -125,27 +127,29 @@ const ChordQuizMode: React.FC = () => {
       <Modal visible={isMenuOpen} animationType="fade" transparent onRequestClose={() => setIsMenuOpen(false)}>
         <View style={styles.menuBackdrop}>
           <View style={styles.menuSheet}>
-            <View style={styles.menuHeader}>
-              <Text style={styles.menuTitle}>Root String Constraints</Text>
-              <Pressable onPress={() => setIsMenuOpen(false)} hitSlop={8}>
-                <Text style={styles.menuClose}>Close</Text>
-              </Pressable>
-            </View>
+            <ScrollView contentContainerStyle={styles.menuSheetContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.menuHeader}>
+                <Text style={styles.menuTitle}>Root String Constraints</Text>
+                <Pressable onPress={() => setIsMenuOpen(false)} hitSlop={8}>
+                  <Text style={styles.menuClose}>Close</Text>
+                </Pressable>
+              </View>
 
-            <View style={styles.constraintRow}>
-              {QUIZ_ROOT_STRING_OPTIONS.map((rootString) => {
-                const checked = enabledRootStrings.includes(rootString);
-                return (
-                  <Pressable
-                    key={rootString}
-                    style={[styles.constraintButton, checked ? styles.constraintButtonActive : null]}
-                    onPress={() => toggleRootStringConstraint(rootString)}
-                  >
-                    <Text style={[styles.constraintText, checked ? styles.constraintTextActive : null]}>Str {rootString + 1}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+              <View style={styles.constraintRow}>
+                {QUIZ_ROOT_STRING_OPTIONS.map((rootString) => {
+                  const checked = enabledRootStrings.includes(rootString);
+                  return (
+                    <Pressable
+                      key={rootString}
+                      style={[styles.constraintButton, checked ? styles.constraintButtonActive : null]}
+                      onPress={() => toggleRootStringConstraint(rootString)}
+                    >
+                      <Text style={[styles.constraintText, checked ? styles.constraintTextActive : null]}>Str {rootString + 1}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -153,84 +157,92 @@ const ChordQuizMode: React.FC = () => {
       <Modal visible={isSubmitModalOpen} animationType="slide" transparent onRequestClose={() => setIsSubmitModalOpen(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalSheet}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Submit Answer</Text>
-              <Pressable onPress={() => setIsSubmitModalOpen(false)} hitSlop={8}>
-                <Text style={styles.modalClose}>Close</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Root Note</Text>
-              <TextInput
-                value={inputRoot}
-                onChangeText={setInputRoot}
-                placeholder="C, Db, D..."
-                style={styles.input}
-                autoCapitalize="characters"
-                autoCorrect={false}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Chord Quality</Text>
-              <TextInput
-                value={inputQuality}
-                onChangeText={setInputQuality}
-                placeholder="maj7, min..."
-                style={styles.input}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.qualitySuggestions}>
-                {CHORD_DICTIONARY.map((definition) => (
-                  <Pressable
-                    key={definition.quality}
-                    style={styles.qualityChip}
-                    onPress={() => setInputQuality(definition.quality)}
-                  >
-                    <Text style={styles.qualityChipText}>{definition.quality}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>String Shape</Text>
-              <View style={styles.shapeRow}>
-                {['5', '4', '3'].map((shapeValue) => {
-                  const active = inputShape === shapeValue;
-                  return (
-                    <Pressable
-                      key={shapeValue}
-                      style={[styles.shapeButton, active ? styles.shapeButtonActive : null]}
-                      onPress={() => setInputShape(shapeValue)}
-                    >
-                      <Text style={[styles.shapeButtonText, active ? styles.shapeButtonTextActive : null]}>
-                        String {Number(shapeValue) + 1}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-                <Pressable style={styles.shapeButton} onPress={() => setInputShape('')}>
-                  <Text style={styles.shapeButtonText}>Any</Text>
+            <ScrollView contentContainerStyle={styles.modalSheetContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>{gameState === 'PLAYING' ? 'Submit Answer' : 'Answer Review'}</Text>
+                <Pressable onPress={() => setIsSubmitModalOpen(false)} hitSlop={8}>
+                  <Text style={styles.modalClose}>Close</Text>
                 </Pressable>
               </View>
-            </View>
 
-            <Pressable
-              onPress={() => {
-                if (gameState === 'PLAYING') {
-                  handleSubmit();
-                } else {
-                  generateQuiz();
-                }
-                setIsSubmitModalOpen(false);
-              }}
-              style={[styles.primaryAction, gameState === 'PLAYING' ? styles.submitAction : styles.nextAction]}
-            >
-              <Text style={styles.primaryActionText}>{gameState === 'PLAYING' ? 'Submit Answer' : 'Next Quiz'}</Text>
-            </Pressable>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Root Note</Text>
+                <TextInput
+                  value={inputRoot}
+                  onChangeText={setInputRoot}
+                  placeholder="C, Db, D..."
+                  style={[styles.input, gameState === 'REVEALED' ? styles.inputReadonly : null]}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  editable={gameState === 'PLAYING'}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Chord Quality</Text>
+                <TextInput
+                  value={inputQuality}
+                  onChangeText={setInputQuality}
+                  placeholder="maj7, min..."
+                  style={[styles.input, gameState === 'REVEALED' ? styles.inputReadonly : null]}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={gameState === 'PLAYING'}
+                />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.qualitySuggestions}>
+                  {CHORD_DICTIONARY.map((definition) => (
+                    <Pressable
+                      key={definition.quality}
+                      style={[styles.qualityChip, gameState === 'REVEALED' ? styles.chipReadonly : null]}
+                      onPress={() => setInputQuality(definition.quality)}
+                      disabled={gameState === 'REVEALED'}
+                    >
+                      <Text style={styles.qualityChipText}>{definition.quality}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>String Shape</Text>
+                <View style={styles.shapeRow}>
+                  {['5', '4', '3'].map((shapeValue) => {
+                    const active = inputShape === shapeValue;
+                    return (
+                      <Pressable
+                        key={shapeValue}
+                        style={[styles.shapeButton, active ? styles.shapeButtonActive : null, gameState === 'REVEALED' ? styles.chipReadonly : null]}
+                        onPress={() => setInputShape(shapeValue)}
+                        disabled={gameState === 'REVEALED'}
+                      >
+                        <Text style={[styles.shapeButtonText, active ? styles.shapeButtonTextActive : null]}>
+                          String {Number(shapeValue) + 1}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                  <Pressable
+                    style={[styles.shapeButton, gameState === 'REVEALED' ? styles.chipReadonly : null]}
+                    onPress={() => setInputShape('')}
+                    disabled={gameState === 'REVEALED'}
+                  >
+                    <Text style={styles.shapeButtonText}>Any</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <Pressable
+                onPress={() => {
+                  if (gameState === 'PLAYING') {
+                    handleSubmit();
+                  }
+                  setIsSubmitModalOpen(false);
+                }}
+                style={[styles.primaryAction, gameState === 'PLAYING' ? styles.submitAction : styles.readonlyAction]}
+              >
+                <Text style={styles.primaryActionText}>{gameState === 'PLAYING' ? 'Submit Answer' : 'Close'}</Text>
+              </Pressable>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -380,12 +392,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   menuSheet: {
+    maxHeight: '86%',
     borderWidth: 1,
     borderColor: '#cbd5e1',
     borderRadius: 12,
     backgroundColor: '#ffffff',
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  menuSheetContent: {
     gap: 10,
+    paddingBottom: 10,
   },
   menuHeader: {
     flexDirection: 'row',
@@ -418,8 +436,11 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 18,
     paddingHorizontal: 14,
     paddingTop: 14,
-    paddingBottom: 24,
+    paddingBottom: 12,
+  },
+  modalSheetContent: {
     gap: 10,
+    paddingBottom: 16,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -457,6 +478,10 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     fontSize: 13,
   },
+  inputReadonly: {
+    backgroundColor: '#f8fafc',
+    color: '#64748b',
+  },
   qualitySuggestions: {
     flexDirection: 'row',
     gap: 6,
@@ -469,6 +494,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#eff6ff',
     paddingHorizontal: 10,
     paddingVertical: 6,
+  },
+  chipReadonly: {
+    opacity: 0.55,
   },
   qualityChipText: {
     color: '#1e293b',
@@ -513,6 +541,9 @@ const styles = StyleSheet.create({
   },
   nextAction: {
     backgroundColor: '#059669',
+  },
+  readonlyAction: {
+    backgroundColor: '#64748b',
   },
   primaryActionText: {
     color: '#ffffff',

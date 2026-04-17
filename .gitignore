@@ -1,5 +1,8 @@
-docs/*
+docs/
 scripts/*
+.expo/
+android/
+ios/
 # Logs
 logs
 *.log

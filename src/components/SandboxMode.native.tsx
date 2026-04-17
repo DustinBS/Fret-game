@@ -9,10 +9,7 @@ import { readSessionString, writeSessionString } from '../utils/viewState';
 import type { GalleryJumpRequest, ShapePresetRequest } from '../types/nativeNavigation';
 import { SheetFretSplit } from './SheetFretSplit.native';
 
-type SandboxLeftView = 'DETECTED_CHORD' | 'NOTE_SEQUENCE';
-
 const SANDBOX_SEARCH_KEY = 'fret-sandbox-search-native';
-const SANDBOX_LEFT_VIEW_KEY = 'fret-sandbox-left-view-native';
 
 const LIBRARY_ROOT_STRINGS = [5, 4, 3] as const;
 
@@ -29,10 +26,6 @@ interface SandboxModeProps {
   presetRequest?: { id: number; preset: ShapePresetRequest } | null;
   onOpenGallery?: (request: GalleryJumpRequest) => void;
   keyConstraint?: string;
-}
-
-function parseLeftView(value: string): SandboxLeftView {
-  return value === 'NOTE_SEQUENCE' ? 'NOTE_SEQUENCE' : 'DETECTED_CHORD';
 }
 
 const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery, keyConstraint = 'C' }) => {
@@ -52,17 +45,10 @@ const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery,
   const [search, setSearch] = useState(() => readSessionString(SANDBOX_SEARCH_KEY, ''));
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [leftView, setLeftView] = useState<SandboxLeftView>(() => {
-    return parseLeftView(readSessionString(SANDBOX_LEFT_VIEW_KEY, 'DETECTED_CHORD'));
-  });
 
   useEffect(() => {
     writeSessionString(SANDBOX_SEARCH_KEY, search);
   }, [search]);
-
-  useEffect(() => {
-    writeSessionString(SANDBOX_LEFT_VIEW_KEY, leftView);
-  }, [leftView]);
 
   useEffect(() => {
     if (!presetRequest) {
@@ -163,23 +149,25 @@ const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery,
   return (
     <View style={styles.screen}>
       <View style={styles.tinyHeader}>
-        <Pressable
-          onPress={() => setLeftView('DETECTED_CHORD')}
-          style={[styles.headerToggleButton, leftView === 'DETECTED_CHORD' ? styles.headerToggleButtonActive : null]}
-        >
-          <Text style={[styles.headerToggleButtonText, leftView === 'DETECTED_CHORD' ? styles.headerToggleButtonTextActive : null]}>
-            Detected Chord
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={() => setLeftView('NOTE_SEQUENCE')}
-          style={[styles.headerToggleButton, leftView === 'NOTE_SEQUENCE' ? styles.headerToggleButtonActive : null]}
-        >
-          <Text style={[styles.headerToggleButtonText, leftView === 'NOTE_SEQUENCE' ? styles.headerToggleButtonTextActive : null]}>
-            NoteSequence
-          </Text>
-        </Pressable>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.headerChipRail} contentContainerStyle={styles.headerChipRailContent}>
+          {analyzedChords.length === 0 ? (
+            <View style={styles.headerEmptyChip}>
+              <Text style={styles.headerEmptyChipText}>[No Detected Chord]</Text>
+            </View>
+          ) : (
+            analyzedChords.map((chord, index) => (
+              <Pressable
+                key={`${chord.name}-${index}`}
+                onPress={() => setSelectedChordIndex(index)}
+                style={[styles.headerChordChip, selectedChordIndex === index ? styles.headerChordChipActive : null]}
+              >
+                <Text style={[styles.headerChordChipText, selectedChordIndex === index ? styles.headerChordChipTextActive : null]}>
+                  [{chord.name}]
+                </Text>
+              </Pressable>
+            ))
+          )}
+        </ScrollView>
 
         <Pressable onPress={() => setIsMenuOpen(true)} style={styles.menuButton}>
           <Text style={styles.menuButtonText}>☰</Text>
@@ -189,58 +177,38 @@ const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery,
       <View style={styles.body}>
         <SheetFretSplit
           modeKey="SANDBOX"
-          sheetTitle={leftView === 'DETECTED_CHORD' ? 'Detected Chord' : 'Note Sequence'}
+          sheetTitle="Music Sheet"
           sheetContent={
-            leftView === 'DETECTED_CHORD' ? (
-              <View style={styles.sheetContentWrap}>
-                <Text style={styles.detectedPrimary}>{selectedChord ? selectedChord.name : 'Unknown'}</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chordRow}>
-                  {analyzedChords.map((chord, index) => (
-                    <Pressable
-                      key={`${chord.name}-${index}`}
-                      onPress={() => setSelectedChordIndex(index)}
-                      style={[styles.chordChip, selectedChordIndex === index ? styles.chordChipActive : null]}
+            <View style={styles.sheetContentWrap}>
+              <View style={styles.sheetCard}>
+                <SheetMusic
+                  notes={activePitches}
+                  colors={clickedFrets.map((position) => (position.interval ? getIntervalHexColor(position.interval) : '#2563eb'))}
+                  gameMode="SANDBOX"
+                  useFlats={useFlatsForLabels}
+                  zoomSemitones={zoomSemitones}
+                />
+              </View>
+
+              <Text style={styles.sectionLabel}>Note Sequence</Text>
+              <View style={styles.noteChipRow}>
+                {sortedNotes.length > 0 ? (
+                  sortedNotes.map((note, index) => (
+                    <View
+                      key={`${note.stringIndex}-${note.fret}-${index}`}
+                      style={[
+                        styles.noteChip,
+                        { backgroundColor: note.interval ? getIntervalHexColor(note.interval) : '#2563eb' },
+                      ]}
                     >
-                      <Text style={[styles.chordChipText, selectedChordIndex === index ? styles.chordChipTextActive : null]}>
-                        {chord.name}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-
-                {analyzedChords.length === 0 ? <Text style={styles.emptyText}>Tap frets to detect a chord.</Text> : null}
+                      <Text style={styles.noteChipText}>{note.note}{note.octave}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.emptyText}>Tap frets to build a chord.</Text>
+                )}
               </View>
-            ) : (
-              <View style={styles.sheetContentWrap}>
-                <View style={styles.sheetCard}>
-                  <SheetMusic
-                    notes={activePitches}
-                    colors={clickedFrets.map((position) => (position.interval ? getIntervalHexColor(position.interval) : '#2563eb'))}
-                    gameMode="SANDBOX"
-                    useFlats={useFlatsForLabels}
-                    zoomSemitones={zoomSemitones}
-                  />
-                </View>
-
-                <View style={styles.noteChipRow}>
-                  {sortedNotes.length > 0 ? (
-                    sortedNotes.map((note, index) => (
-                      <View
-                        key={`${note.stringIndex}-${note.fret}-${index}`}
-                        style={[
-                          styles.noteChip,
-                          { backgroundColor: note.interval ? getIntervalHexColor(note.interval) : '#2563eb' },
-                        ]}
-                      >
-                        <Text style={styles.noteChipText}>{note.note}{note.octave}</Text>
-                      </View>
-                    ))
-                  ) : (
-                    <Text style={styles.emptyText}>Tap frets to build a chord.</Text>
-                  )}
-                </View>
-              </View>
-            )
+            </View>
           }
           fretboardContent={<Fretboard numFrets={25} markers={markers} onFretClick={handleFretClick} />}
         />
@@ -249,41 +217,43 @@ const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery,
       <Modal visible={isMenuOpen} animationType="fade" transparent onRequestClose={() => setIsMenuOpen(false)}>
         <View style={styles.menuBackdrop}>
           <View style={styles.menuSheet}>
-            <View style={styles.menuHeader}>
-              <Text style={styles.menuTitle}>Sandbox Menu</Text>
-              <Pressable onPress={() => setIsMenuOpen(false)} hitSlop={8}>
-                <Text style={styles.menuClose}>Close</Text>
+            <ScrollView contentContainerStyle={styles.menuSheetContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.menuHeader}>
+                <Text style={styles.menuTitle}>Sandbox Menu</Text>
+                <Pressable onPress={() => setIsMenuOpen(false)} hitSlop={8}>
+                  <Text style={styles.menuClose}>Close</Text>
+                </Pressable>
+              </View>
+
+              <Pressable
+                onPress={() => {
+                  setIsMenuOpen(false);
+                  setIsLibraryOpen(true);
+                }}
+                style={styles.menuAction}
+              >
+                <Text style={styles.menuActionText}>Open Chord Library</Text>
               </Pressable>
-            </View>
 
-            <Pressable
-              onPress={() => {
-                setIsMenuOpen(false);
-                setIsLibraryOpen(true);
-              }}
-              style={styles.menuAction}
-            >
-              <Text style={styles.menuActionText}>Open Chord Library</Text>
-            </Pressable>
+              <View style={styles.menuToggleRow}>
+                <Text style={styles.menuToggleLabel}>One Note / String</Text>
+                <Switch value={oneNotePerString} onValueChange={setOneNotePerString} />
+              </View>
 
-            <View style={styles.menuToggleRow}>
-              <Text style={styles.menuToggleLabel}>One Note / String</Text>
-              <Switch value={oneNotePerString} onValueChange={setOneNotePerString} />
-            </View>
+              <Pressable onPress={clearSelection} style={styles.menuAction}>
+                <Text style={styles.menuActionText}>Clear Selection</Text>
+              </Pressable>
 
-            <Pressable onPress={clearSelection} style={styles.menuAction}>
-              <Text style={styles.menuActionText}>Clear Selection</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={openSelectedChordInGallery}
-              disabled={!selectedChord}
-              style={[styles.menuAction, !selectedChord ? styles.menuActionDisabled : null]}
-            >
-              <Text style={[styles.menuActionText, !selectedChord ? styles.menuActionTextDisabled : null]}>
-                See In Gallery
-              </Text>
-            </Pressable>
+              <Pressable
+                onPress={openSelectedChordInGallery}
+                disabled={!selectedChord}
+                style={[styles.menuAction, !selectedChord ? styles.menuActionDisabled : null]}
+              >
+                <Text style={[styles.menuActionText, !selectedChord ? styles.menuActionTextDisabled : null]}>
+                  See In Gallery
+                </Text>
+              </Pressable>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -366,26 +336,49 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  headerToggleButton: {
-    borderRadius: 8,
+  headerChipRail: {
+    flex: 1,
+  },
+  headerChipRailContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingRight: 8,
+  },
+  headerChordChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  headerChordChipActive: {
+    borderColor: '#2563eb',
+    backgroundColor: '#2563eb',
+  },
+  headerChordChipText: {
+    color: '#334155',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.7,
+  },
+  headerChordChipTextActive: {
+    color: '#ffffff',
+  },
+  headerEmptyChip: {
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: '#cbd5e1',
     backgroundColor: '#ffffff',
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  headerToggleButtonActive: {
-    borderColor: '#2563eb',
-    backgroundColor: '#2563eb',
-  },
-  headerToggleButtonText: {
-    color: '#334155',
+  headerEmptyChipText: {
+    color: '#94a3b8',
     fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.7,
-  },
-  headerToggleButtonTextActive: {
-    color: '#ffffff',
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   menuButton: {
     marginLeft: 'auto',
@@ -412,40 +405,17 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 10,
   },
-  detectedPrimary: {
-    color: '#0f172a',
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  chordRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingBottom: 2,
-  },
-  chordChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-    backgroundColor: '#eff6ff',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  chordChipActive: {
-    backgroundColor: '#2563eb',
-    borderColor: '#2563eb',
-  },
-  chordChipText: {
-    color: '#1e293b',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  chordChipTextActive: {
-    color: '#ffffff',
-  },
   emptyText: {
     color: '#94a3b8',
     fontSize: 12,
     fontWeight: '600',
+  },
+  sectionLabel: {
+    color: '#64748b',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
   sheetCard: {
     borderWidth: 1,
@@ -478,12 +448,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   menuSheet: {
+    maxHeight: '88%',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#cbd5e1',
     backgroundColor: '#ffffff',
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  menuSheetContent: {
     gap: 10,
+    paddingBottom: 10,
   },
   menuHeader: {
     flexDirection: 'row',

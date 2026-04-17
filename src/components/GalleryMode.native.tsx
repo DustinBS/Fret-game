@@ -272,16 +272,18 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
       <Modal visible={isMenuOpen} animationType="fade" transparent onRequestClose={() => setIsMenuOpen(false)}>
         <View style={styles.floatingMenuBackdrop}>
           <View style={styles.floatingMenuSheet}>
-            <View style={styles.floatingMenuHeader}>
-              <Text style={styles.floatingMenuTitle}>Gallery Menu</Text>
-              <Pressable onPress={() => setIsMenuOpen(false)} hitSlop={8}>
-                <Text style={styles.floatingMenuClose}>Close</Text>
-              </Pressable>
-            </View>
-            <View style={styles.floatingMenuRow}>
-              <Text style={styles.floatingMenuLabel}>Diatonic</Text>
-              <Switch value={showDiatonic} onValueChange={setShowDiatonic} />
-            </View>
+            <ScrollView contentContainerStyle={styles.floatingMenuSheetContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.floatingMenuHeader}>
+                <Text style={styles.floatingMenuTitle}>Gallery Menu</Text>
+                <Pressable onPress={() => setIsMenuOpen(false)} hitSlop={8}>
+                  <Text style={styles.floatingMenuClose}>Close</Text>
+                </Pressable>
+              </View>
+              <View style={styles.floatingMenuRow}>
+                <Text style={styles.floatingMenuLabel}>Diatonic</Text>
+                <Switch value={showDiatonic} onValueChange={setShowDiatonic} />
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -417,12 +419,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   floatingMenuSheet: {
+    maxHeight: '80%',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#cbd5e1',
     backgroundColor: '#ffffff',
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  floatingMenuSheetContent: {
     gap: 10,
+    paddingBottom: 10,
   },
   floatingMenuHeader: {
     flexDirection: 'row',

@@ -2,9 +2,10 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { KEY_CONSTRAINT_OPTIONS } from './src/utils/musicTheory';
 import { useGlobalKeyConstraint } from './src/hooks/useGlobalKey.native';
-import { readSessionBoolean, readSessionJson, writeSessionBoolean, writeSessionJson } from './src/utils/viewState';
+import { readSessionBoolean, writeSessionBoolean } from './src/utils/viewState';
 import FretboardGame from './src/components/FretboardGame.native';
 import SandboxMode from './src/components/SandboxMode.native';
 import ChordQuizMode from './src/components/ChordQuizMode.native';
@@ -60,16 +61,7 @@ function NativeMenuButton({
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NativeTab>('TRAINER');
-  const [sidebarCollapsedByTab, setSidebarCollapsedByTab] = useState<Record<NativeTab, boolean>>(() => {
-    const persisted = readSessionJson<Partial<Record<NativeTab, boolean>>>(SIDEBAR_COLLAPSE_KEY, {});
-    return {
-      TRAINER: Boolean(persisted.TRAINER),
-      SANDBOX: Boolean(persisted.SANDBOX),
-      QUIZ: Boolean(persisted.QUIZ),
-      GALLERY: Boolean(persisted.GALLERY),
-      VISUAL_ARCHETYPE: Boolean(persisted.VISUAL_ARCHETYPE),
-    };
-  });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readSessionBoolean(SIDEBAR_COLLAPSE_KEY, false));
   const [globalKey, setGlobalKey] = useGlobalKeyConstraint('C');
   const [useGalleryColors, setUseGalleryColors] = useState<boolean>(() => readSessionBoolean(GALLERY_COLORS_KEY, true));
   const [mountedTabs, setMountedTabs] = useState<Record<NativeTab, boolean>>({
@@ -87,10 +79,26 @@ export default function App() {
   }, [useGalleryColors]);
 
   useEffect(() => {
-    writeSessionJson(SIDEBAR_COLLAPSE_KEY, sidebarCollapsedByTab);
-  }, [sidebarCollapsedByTab]);
+    writeSessionBoolean(SIDEBAR_COLLAPSE_KEY, sidebarCollapsed);
+  }, [sidebarCollapsed]);
 
-  const sidebarCollapsed = sidebarCollapsedByTab[activeTab];
+  useEffect(() => {
+    const lockOrientation = async () => {
+      try {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+      } catch {
+        // Keep app usable even if orientation APIs are unavailable.
+      }
+    };
+
+    void lockOrientation();
+
+    return () => {
+      ScreenOrientation.unlockAsync().catch(() => {
+        // Ignore unlock failures on teardown.
+      });
+    };
+  }, []);
 
   const activateTab = (tab: NativeTab) => {
     setActiveTab(tab);
@@ -119,12 +127,7 @@ export default function App() {
             <View style={styles.sideRailHeader}>
               {!sidebarCollapsed ? <Text style={styles.sideRailTitle}>Modes</Text> : null}
               <Pressable
-                onPress={() => {
-                  setSidebarCollapsedByTab((prev) => ({
-                    ...prev,
-                    [activeTab]: !prev[activeTab],
-                  }));
-                }}
+                onPress={() => setSidebarCollapsed((prev) => !prev)}
                 style={styles.sideRailChevronButton}
                 hitSlop={8}
               >

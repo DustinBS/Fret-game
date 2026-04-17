@@ -3,10 +3,11 @@ import SheetMusic from './SheetMusic';
 import { LegendPanel } from './LegendPanel';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
 import { CHORD_QUALITY_DIATONIC_MAP, DIATONIC_INTERVALS } from '../utils/diatonic';
-import { TUNING, getIntervalHexColor, getKeySignatureInfo, getNoteNameFromPitchClass, keySignatureUsesFlats } from '../utils/musicTheory';
+import { getKeySignatureInfo, getNoteNameFromPitchClass, keySignatureUsesFlats } from '../utils/musicTheory';
 import { getGalleryOrderedChordDefinitions } from '../utils/chordOrdering';
 import { flashElementOutline, scrollToTargetAndFlash } from '../utils/scrollFeedback';
 import { buildSearchWithUpdates, navigateFromClick } from '../utils/queryNavigation';
+import { buildShapeSheetPreview, resolveRootFretForShape } from '../utils/chordShapeRendering';
 import {
   readSessionJson,
   readSessionNumber,
@@ -16,10 +17,8 @@ import {
   writeSessionNumber,
   writeSessionString,
 } from '../utils/viewState';
-import type { ChordShape } from '../utils/chordLibrary.types';
 import { buildVisualArchetypeGroups, type VisualArchetypeGroup, type VisualArchetypeMember } from '../utils/visualArchetypes';
 
-const SHEET_MAX_PITCH = 77;
 const DIATONIC_DISPLAY_ORDER = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'viio'];
 const VISUAL_ROOT_FILTER_KEY = 'fret-visual-root-filter';
 const VISUAL_CHORD_SEARCH_KEY = 'fret-visual-chord-search';
@@ -40,33 +39,6 @@ function parseRootStringFilter(value: string | null): RootStringFilter {
 interface VisualArchetypeModeProps {
   keyConstraint: string;
   useGalleryColors: boolean;
-}
-
-function resolveRootFretForShape(rootPitchClass: number, shape: ChordShape): number {
-  const stringOpenPitch = TUNING[shape.rootString];
-  let rootFret = (rootPitchClass - (stringOpenPitch % 12) + 12) % 12;
-
-  let minFretInShape = Math.min(...shape.offsets.map((offsetDef) => rootFret + offsetDef.offset));
-  while (minFretInShape < 0) {
-    rootFret += 12;
-    minFretInShape += 12;
-  }
-
-  if (rootFret <= 2) {
-    rootFret += 12;
-  }
-
-  return rootFret;
-}
-
-function buildCanonicalPreview(member: VisualArchetypeMember, rootPitchClass: number, useGalleryColors: boolean) {
-  const rootFret = resolveRootFretForShape(rootPitchClass, member.shape);
-  const notes = member.shape.offsets.map((offsetDef) => TUNING[offsetDef.string] + rootFret + offsetDef.offset);
-  const colors = member.shape.offsets.map((offsetDef) => useGalleryColors ? getIntervalHexColor(offsetDef.interval || '1') : '#111111');
-  const highestPitch = notes.length > 0 ? Math.max(...notes) : 0;
-  const zoomSemitones = highestPitch > SHEET_MAX_PITCH ? highestPitch - SHEET_MAX_PITCH : 0;
-
-  return { notes, colors, zoomSemitones, rootFret };
 }
 
 function getGroupDiatonicOptions(group: VisualArchetypeGroup): string[] {
@@ -331,7 +303,7 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
                 : rootObj.pitchClass;
 
               const activeMember = getActiveMemberForDiatonic(group, activeDiatonic, qualityOrderMap);
-              const preview = buildCanonicalPreview(activeMember, previewRootPitchClass, useGalleryColors);
+              const preview = buildShapeSheetPreview(activeMember.shape, previewRootPitchClass, useGalleryColors);
               const previewRootLabel = getNoteNameFromPitchClass(previewRootPitchClass, notationUsesFlats);
               const groupQualities = Array.from(new Set(group.members.map((member) => member.quality))).join(' ');
 

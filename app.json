@@ -5,6 +5,7 @@
     "version": "1.0.0",
     "orientation": "landscape",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icons/app-icon.png",
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -12,7 +13,14 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.dustinbs.fretfocus"
+      "package": "com.dustinbs.fretfocus",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icons/adaptive-icon-foreground.png",
+        "backgroundImage": "./assets/icons/adaptive-icon-background.png"
+      }
+    },
+    "web": {
+      "favicon": "./public/guitar-fret-icon.svg"
     },
     "plugins": [
       "expo-font"

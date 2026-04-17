@@ -1,4 +1,5 @@
-docs/
+docs/*
+scripts/*
 # Logs
 logs
 *.log

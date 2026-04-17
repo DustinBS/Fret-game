@@ -1,17 +1,44 @@
-function safeSessionGet(key: string): string | null {
+// React Native has no `window.sessionStorage`; keep a process-local fallback so
+// existing sync read/write call sites remain platform-agnostic.
+const memorySessionStore = new Map<string, string>();
+
+function getWebSessionStorage(): Storage | null {
   try {
-    return window.sessionStorage.getItem(key);
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      return window.sessionStorage;
+    }
   } catch {
-    return null;
+    // Ignore and use memory fallback.
   }
+
+  return null;
+}
+
+function safeSessionGet(key: string): string | null {
+  const storage = getWebSessionStorage();
+  if (storage) {
+    try {
+      return storage.getItem(key);
+    } catch {
+      // Fall through to memory fallback.
+    }
+  }
+
+  return memorySessionStore.get(key) ?? null;
 }
 
 function safeSessionSet(key: string, value: string): void {
-  try {
-    window.sessionStorage.setItem(key, value);
-  } catch {
-    // No-op when storage is unavailable.
+  const storage = getWebSessionStorage();
+  if (storage) {
+    try {
+      storage.setItem(key, value);
+      return;
+    } catch {
+      // Fall through to memory fallback.
+    }
   }
+
+  memorySessionStore.set(key, value);
 }
 
 export function readSessionString(key: string, fallback: string): string {

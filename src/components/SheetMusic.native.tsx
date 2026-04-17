@@ -3,15 +3,35 @@ import React from 'react';
 import { View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { SHEET_WIDTH, SHEET_HEIGHT } from './sheetMusicConfig';
+import { getKeySignatureLetterAccidentals, getRenderableKeySignature } from '../utils/musicTheory';
 
 interface SheetMusicProps {
   notes: number[];
   colors: string[];
   gameMode: 'WINDOW' | 'OCTAVE' | 'CHORD' | 'SANDBOX' | string;
   useFlats: boolean;
+  zoomSemitones?: number;
+  keySignature?: string;
+  suppressDiatonicAccidentals?: boolean;
 }
 
-const SheetMusic: React.FC<SheetMusicProps> = ({ notes, colors, gameMode, useFlats }) => {
+const SHEET_VIEWBOX_BOTTOM_PAD = 8;
+const SHEET_VIEWBOX_UNITS_PER_SEMITONE = 12;
+const SHEET_MAX_EXTRA_TOP_UNITS = 120;
+
+const SheetMusic: React.FC<SheetMusicProps> = ({
+  notes,
+  colors,
+  gameMode,
+  useFlats,
+  zoomSemitones,
+  keySignature,
+  suppressDiatonicAccidentals = false,
+}) => {
+  const renderableKeySignature = keySignature ? getRenderableKeySignature(keySignature) : null;
+  const keySignatureAccidentals = renderableKeySignature && suppressDiatonicAccidentals
+    ? getKeySignatureLetterAccidentals(renderableKeySignature)
+    : {};
 
   const noteData = notes.map((val, i) => {
     let renderMidi = val;
@@ -24,11 +44,20 @@ const SheetMusic: React.FC<SheetMusicProps> = ({ notes, colors, gameMode, useFla
     const flatNames = ['c', 'd', 'd', 'e', 'e', 'f', 'g', 'g', 'a', 'a', 'b', 'b'];
     const sharpNames = ['c', 'c', 'd', 'd', 'e', 'f', 'f', 'g', 'g', 'a', 'a', 'b'];
 
-    let noteLetter = useFlats ? flatNames[semitone] : sharpNames[semitone];
-    let accidental = null;
+    const noteLetter = useFlats ? flatNames[semitone] : sharpNames[semitone];
+    let accidental: string | null = null;
 
     if (useFlats && [1, 3, 6, 8, 10].includes(semitone)) accidental = 'b';
     else if (!useFlats && [1, 3, 6, 8, 10].includes(semitone)) accidental = '#';
+
+    if (suppressDiatonicAccidentals && renderableKeySignature) {
+      const keySigAccidental = keySignatureAccidentals[noteLetter.toUpperCase()] ?? null;
+      if (accidental && keySigAccidental === accidental) {
+        accidental = null;
+      } else if (!accidental && keySigAccidental) {
+        accidental = 'n';
+      }
+    }
 
     return {
       key: `${noteLetter}/${octave}`,
@@ -61,6 +90,8 @@ const SheetMusic: React.FC<SheetMusicProps> = ({ notes, colors, gameMode, useFla
 
             const WIDTH = ${SHEET_WIDTH};
             const HEIGHT = ${SHEET_HEIGHT};
+            const zoomSemitones = ${Math.max(0, zoomSemitones ?? 0)};
+            const renderableKeySignature = ${JSON.stringify(renderableKeySignature)};
 
             renderer.resize(WIDTH, HEIGHT);
             const context = renderer.getContext();
@@ -68,6 +99,9 @@ const SheetMusic: React.FC<SheetMusicProps> = ({ notes, colors, gameMode, useFla
             // Y=30: Push stave down so notes are closer to the bottom edge
             // This effectively removes "bottom dead space" inside the canvas
             const stave = new VF.Stave(0, 30, WIDTH - 5);
+            if (renderableKeySignature) {
+              stave.addKeySignature(renderableKeySignature);
+            }
             stave.addClef("treble").setContext(context).draw();
 
             const notesData = ${JSON.stringify(noteData)};
@@ -88,6 +122,17 @@ const SheetMusic: React.FC<SheetMusicProps> = ({ notes, colors, gameMode, useFla
 
               new VF.Formatter().joinVoices([voice]).format([voice], WIDTH - 50);
               voice.draw(context, stave);
+            }
+
+            const extraTopUnits = Math.min(${SHEET_MAX_EXTRA_TOP_UNITS}, zoomSemitones * ${SHEET_VIEWBOX_UNITS_PER_SEMITONE});
+            const viewBoxY = -extraTopUnits;
+            const viewBoxHeight = HEIGHT + extraTopUnits + ${SHEET_VIEWBOX_BOTTOM_PAD};
+            const svg = div.querySelector('svg');
+            if (svg) {
+              svg.setAttribute('viewBox', '0 ' + viewBoxY + ' ' + WIDTH + ' ' + viewBoxHeight);
+              svg.setAttribute('preserveAspectRatio', 'xMidYMax meet');
+              svg.style.overflow = 'visible';
+              svg.style.display = 'block';
             }
           } catch (e) {
             document.getElementById("error").innerText = e.toString();

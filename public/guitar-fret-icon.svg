@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="FretFocus guitar icon">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0E2033" />
+      <stop offset="100%" stop-color="#2A6DA8" />
+    </linearGradient>
+    <linearGradient id="pick" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F5E7C8" />
+      <stop offset="100%" stop-color="#E8C98A" />
+    </linearGradient>
+  </defs>
+
+  <rect x="20" y="20" width="472" height="472" rx="110" fill="url(#bg)" />
+
+  <path
+    d="M256 70C187 106 148 177 148 245c0 102 78 187 108 197 30-10 108-95 108-197 0-68-39-139-108-175z"
+    fill="url(#pick)"
+    stroke="#FCEED0"
+    stroke-width="6"
+  />
+
+  <circle cx="256" cy="322" r="74" fill="#BC7D3C" />
+  <circle cx="256" cy="322" r="43" fill="#2A1D14" />
+
+  <rect x="239" y="146" width="34" height="206" rx="15" fill="#784421" />
+  <rect x="242" y="146" width="28" height="206" rx="12" fill="#8D572E" />
+
+  <line x1="244" y1="182" x2="268" y2="182" stroke="#EED7A0" stroke-width="4" />
+  <line x1="244" y1="208" x2="268" y2="208" stroke="#EED7A0" stroke-width="4" />
+  <line x1="244" y1="234" x2="268" y2="234" stroke="#EED7A0" stroke-width="4" />
+  <line x1="244" y1="260" x2="268" y2="260" stroke="#EED7A0" stroke-width="4" />
+
+  <line x1="248" y1="152" x2="248" y2="352" stroke="#F7F0DD" stroke-width="2" />
+  <line x1="255" y1="152" x2="255" y2="352" stroke="#F7F0DD" stroke-width="2" />
+  <line x1="262" y1="152" x2="262" y2="352" stroke="#F7F0DD" stroke-width="2" />
+</svg>

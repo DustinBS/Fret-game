@@ -1,10 +1,10 @@
-// src/components/FretboardGame.native.tsx
-import React, { useState } from 'react';
-import { View, Text, Pressable, Modal } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFretboardGame } from '../hooks/useFretboardGame';
 import { getNoteName } from '../utils/musicTheory';
 import SheetMusic from './SheetMusic';
 import { Fretboard, type FretMarker } from './Fretboard';
+import { SheetFretSplit } from './SheetFretSplit.native';
 
 const SAFE_PALETTE = [
   { name: '1',  bg: 'bg-[#a6cee3]', text: 'text-[#a6cee3]', border: 'border-[#a6cee3]', hex: '#a6cee3' },
@@ -27,7 +27,7 @@ const FretboardGame = () => {
     gameMode, toggleGameMode, accidentalMode, cycleAccidentalMode,
     isSheetMode, setIsSheetMode, isHiddenMode, setIsHiddenMode,
     anchorFret, windowStart, windowEnd, clickedFrets, gameState,
-    streak, handleFretClick, submitGuess, clearGuesses, generateNewRound, TUNING,
+    handleFretClick, submitGuess, clearGuesses, generateNewRound, TUNING,
   } = useFretboardGame(3);
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -37,11 +37,15 @@ const FretboardGame = () => {
     return SAFE_PALETTE[colorIdx].hex;
   });
 
-  const getGameModeName = (mode: string) => {
-    if (mode === 'WINDOW') return 'Position';
-    if (mode === 'OCTAVE') return 'Octave';
-    return '';
-  }
+  const noteBadges = useMemo(() => {
+    return targetNotes.map((value, index) => {
+      const colorIdx = colorIndices[index % colorIndices.length];
+      const color = SAFE_PALETTE[colorIdx].hex;
+      const { note, octave } = getNoteName(value, roundUseFlats);
+      const label = gameMode === 'WINDOW' ? note : `${note}${octave}`;
+      return { label, color };
+    });
+  }, [targetNotes, colorIndices, roundUseFlats, gameMode]);
 
   const markers: FretMarker[] = [];
   for (let sIdx = 0; sIdx < 6; sIdx++) {
@@ -98,131 +102,369 @@ const FretboardGame = () => {
   }
 
   return (
-    <View className="flex-1 bg-white">
+    <View style={styles.screen}>
+      <View style={styles.tinyHeader}>
+        <Pressable
+          onPress={gameState === 'GUESSING' ? submitGuess : generateNewRound}
+          style={[styles.headerButton, styles.primaryHeaderButton]}
+        >
+          <Text style={[styles.headerButtonText, styles.primaryHeaderButtonText]}>
+            {gameState === 'GUESSING' ? 'Check Answer' : 'Next Round'}
+          </Text>
+        </Pressable>
 
-{/* --- HEADER --- */}
-      {/* items-end: Ensures content aligns to bottom of header */}
-      <View className="h-24 flex-row items-end justify-between px-2 border-b border-slate-200 bg-slate-50 z-10">
+        <Pressable
+          onPress={() => setIsSheetMode((prev) => !prev)}
+          style={[styles.headerButton, isSheetMode ? styles.sheetButtonActive : null]}
+        >
+          <Text style={[styles.headerButtonText, isSheetMode ? styles.sheetButtonActiveText : null]}>Sheet Music</Text>
+        </Pressable>
 
-        {/* LEFT: Buttons (Aligned center relative to their row, but sitting at bottom of header) */}
-        <View className="flex-row items-center gap-3 w-24 h-full pb-3">
-            <Pressable onPress={() => setIsMenuOpen(true)} className="p-1">
-               <Text className="text-xl text-slate-800 font-bold">☰</Text>
-            </Pressable>
-
-            <Pressable onPress={clearGuesses} className="bg-red-50 px-2 py-1.5 rounded border border-red-200">
-               <Text className="text-[10px] font-bold text-red-700 uppercase">CLEAR</Text>
-            </Pressable>
-        </View>
-
-        {/* CENTER: Targets */}
-        {/* pb-0 ensures no padding lifts the music up */}
-        <View className="flex-1 items-center justify-end h-full pb-0">
-          {isSheetMode ? (
-               // SCALE + TRANSLATE:
-               // scale-75 shrinks it.
-               // translateY-15 pushes it down 15px to counteract the "lift" from scaling center.
-               // Calculation: (OriginalHeight 120 * (1 - 0.75)) / 2 = 15px
-               <View
-                 style={{ transform: [{ scale: 0.60 }, { translateY: 60 }] }}
-               >
-                 <SheetMusic notes={targetNotes} colors={currentRoundColors} gameMode={gameMode} useFlats={roundUseFlats} />
-               </View>
-            ) : (
-               <View className="flex-row gap-1 flex-wrap justify-center mb-4">
-                {targetNotes.map((val, idx) => {
-                  const color = SAFE_PALETTE[colorIndices[idx % colorIndices.length]];
-                  const { note } = getNoteName(val, roundUseFlats);
-                  return (
-                    <View key={idx} className={`w-8 h-8 rounded-full ${color.bg} items-center justify-center shadow-sm`}>
-                        <Text className="text-white font-bold text-sm">{note}</Text>
-                    </View>
-                  );
-                })}
-               </View>
-            )}
-        </View>
-
-        {/* RIGHT: Stats (Aligned bottom) */}
-        <View className="flex-row items-center justify-end gap-3 w-24 h-full pb-3">
-            <View className="items-center">
-               <Text className="text-[8px] font-bold text-slate-400 leading-none mb-0.5">STREAK</Text>
-               <Text className={`text-sm font-mono font-bold leading-none ${streak > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>
-                 {streak}
-               </Text>
-            </View>
-
-            {gameState === 'GUESSING' ? (
-               <Pressable onPress={submitGuess} className="bg-slate-900 px-3 py-2 rounded">
-                  <Text className="text-white font-bold text-[10px] uppercase">CHECK</Text>
-               </Pressable>
-            ) : (
-               <Pressable onPress={generateNewRound} className="bg-white border border-slate-900 px-3 py-2 rounded">
-                  <Text className="text-slate-900 font-bold text-[10px] uppercase">NEXT →</Text>
-               </Pressable>
-            )}
-        </View>
+        <Pressable onPress={() => setIsMenuOpen(true)} style={[styles.headerButton, styles.menuButton]}>
+          <Text style={styles.menuButtonText}>☰</Text>
+        </Pressable>
       </View>
 
-      {/* --- FRETBOARD --- */}
-      <View className="flex-1 bg-slate-100 px-1 justify-center w-full py-4">
-          <Fretboard
+      <View style={styles.body}>
+        <SheetFretSplit
+          modeKey="TRAINER"
+          sheetTitle="Target Sequence"
+          sheetContent={
+            <View style={styles.sheetPaneContent}>
+              {isSheetMode ? (
+                <View style={styles.sheetMusicWrap}>
+                  <SheetMusic
+                    notes={targetNotes}
+                    colors={currentRoundColors}
+                    gameMode={gameMode}
+                    useFlats={roundUseFlats}
+                  />
+                </View>
+              ) : (
+                <View style={styles.noteBadgeWrap}>
+                  {noteBadges.map((noteBadge, index) => (
+                    <View key={`${noteBadge.label}-${index}`} style={[styles.noteBadge, { backgroundColor: noteBadge.color }]}>
+                      <Text style={styles.noteBadgeText}>{noteBadge.label}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <Text style={styles.sheetHintText}>
+                {gameMode === 'WINDOW'
+                  ? `Window centered near fret ${anchorFret}`
+                  : 'Full-position octave matching'}
+              </Text>
+            </View>
+          }
+          fretboardContent={
+            <Fretboard
               markers={markers}
               windowStart={windowStart}
               windowEnd={windowEnd}
               onFretClick={handleFretClick}
-          />
+            />
+          }
+        />
       </View>
 
-      {/* --- SETTINGS MODAL --- */}
-      <Modal animationType="slide" transparent={true} visible={isMenuOpen} onRequestClose={() => setIsMenuOpen(false)}>
-        <View className="flex-1 bg-black/50 justify-end">
-           <View className="bg-white rounded-t-3xl p-6 pb-10">
-              <View className="flex-row justify-between items-center mb-6">
-                 <Text className="text-xl font-black uppercase">Settings</Text>
-                 <Pressable onPress={() => setIsMenuOpen(false)} className="p-2 bg-slate-100 rounded-full"><Text>✕</Text></Pressable>
+      <Modal animationType="slide" transparent visible={isMenuOpen} onRequestClose={() => setIsMenuOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Trainer Menu</Text>
+              <Pressable onPress={() => setIsMenuOpen(false)} hitSlop={8}>
+                <Text style={styles.modalClose}>Close</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.noteCountRow}>
+              <Text style={styles.settingLabel}>Note Count</Text>
+              <View style={styles.counterWrap}>
+                <Pressable onPress={() => updateNoteCount(-1)} style={styles.counterButton}>
+                  <Text style={styles.counterButtonText}>-</Text>
+                </Pressable>
+                <Text style={styles.counterValue}>{noteCount}</Text>
+                <Pressable onPress={() => updateNoteCount(1)} style={styles.counterButton}>
+                  <Text style={styles.counterButtonText}>+</Text>
+                </Pressable>
               </View>
+            </View>
 
-              <View className="gap-6">
-                 <View className="flex-row justify-between items-center">
-                    <Text className="font-bold text-slate-500 uppercase">Note Count</Text>
-                    <View className="flex-row items-center border border-slate-300 rounded h-10">
-                       <Pressable onPress={() => updateNoteCount(-1)} className="px-4 justify-center bg-slate-50"><Text>-</Text></Pressable>
-                       <Text className="w-10 text-center font-bold">{noteCount}</Text>
-                       <Pressable onPress={() => updateNoteCount(1)} className="px-4 justify-center bg-slate-50"><Text>+</Text></Pressable>
-                    </View>
-                 </View>
+            <ToggleRow label="Hide Guesses" checked={isHiddenMode} onChange={setIsHiddenMode} />
 
-                 <ToggleRow label="Sheet Music Mode" checked={isSheetMode} onChange={setIsSheetMode} />
-                 <ToggleRow label="Hide Guesses" checked={isHiddenMode} onChange={setIsHiddenMode} />
+            <Pressable onPress={toggleGameMode} style={styles.menuActionButton}>
+              <Text style={styles.menuActionLabel}>Game Mode</Text>
+              <Text style={styles.menuActionValue}>{gameMode === 'WINDOW' ? 'Position' : 'Octave'}</Text>
+            </Pressable>
 
-                 <Pressable onPress={toggleGameMode} className="bg-blue-50 p-4 rounded-lg flex-row justify-between">
-                    <Text className="font-bold text-blue-800 uppercase">Game Mode</Text>
-                    <Text className="font-bold text-blue-600">{
-                      getGameModeName(gameMode)
-                    }</Text>
-                 </Pressable>
+            <Pressable onPress={cycleAccidentalMode} style={styles.menuActionButton}>
+              <Text style={styles.menuActionLabel}>Accidentals</Text>
+              <Text style={styles.menuActionValue}>{accidentalMode}</Text>
+            </Pressable>
 
-                 <Pressable onPress={cycleAccidentalMode} className="bg-blue-50 p-4 rounded-lg flex-row justify-between">
-                    <Text className="font-bold text-blue-800 uppercase">Accidentals</Text>
-                    <Text className="font-bold text-blue-600">{accidentalMode}</Text>
-                 </Pressable>
-              </View>
-           </View>
+            <Pressable onPress={clearGuesses} style={[styles.menuActionButton, styles.clearActionButton]}>
+              <Text style={[styles.menuActionLabel, styles.clearActionLabel]}>Clear Guesses</Text>
+            </Pressable>
+          </View>
         </View>
       </Modal>
-
     </View>
   );
 };
 
-const ToggleRow = ({ label, checked, onChange, disabled }: any) => (
-   <View className={`flex-row justify-between items-center py-2 ${disabled ? 'opacity-50' : ''}`}>
-      <Text className="font-bold text-slate-500 uppercase">{label}</Text>
-      <Pressable onPress={() => !disabled && onChange(!checked)} className={`w-12 h-7 rounded-full justify-center px-1 ${checked ? 'bg-green-500' : 'bg-slate-300'}`}>
-         <View className={`w-5 h-5 bg-white rounded-full shadow-sm ${checked ? 'self-end' : 'self-start'}`} />
-      </Pressable>
-   </View>
+const ToggleRow = ({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) => (
+  <View style={styles.toggleRow}>
+    <Text style={styles.settingLabel}>{label}</Text>
+    <Pressable
+      onPress={() => onChange(!checked)}
+      style={[styles.toggleTrack, checked ? styles.toggleTrackActive : null]}
+    >
+      <View style={[styles.toggleThumb, checked ? styles.toggleThumbActive : null]} />
+    </Pressable>
+  </View>
 );
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  tinyHeader: {
+    height: 44,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    gap: 8,
+  },
+  headerButton: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  headerButtonText: {
+    color: '#334155',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  primaryHeaderButton: {
+    borderColor: '#0f172a',
+    backgroundColor: '#0f172a',
+  },
+  primaryHeaderButtonText: {
+    color: '#ffffff',
+  },
+  sheetButtonActive: {
+    borderColor: '#2563eb',
+    backgroundColor: '#2563eb',
+  },
+  sheetButtonActiveText: {
+    color: '#ffffff',
+  },
+  menuButton: {
+    marginLeft: 'auto',
+    width: 34,
+    alignItems: 'center',
+    paddingHorizontal: 0,
+  },
+  menuButtonText: {
+    color: '#1e293b',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  body: {
+    flex: 1,
+    padding: 8,
+    backgroundColor: '#f1f5f9',
+  },
+  sheetPaneContent: {
+    flex: 1,
+    gap: 10,
+  },
+  sheetMusicWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 170,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 10,
+    paddingVertical: 8,
+  },
+  noteBadgeWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 10,
+    padding: 10,
+    minHeight: 170,
+    alignContent: 'flex-start',
+  },
+  noteBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noteBadgeText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  sheetHintText: {
+    color: '#64748b',
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    fontWeight: '700',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 24,
+    gap: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalTitle: {
+    color: '#0f172a',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  modalClose: {
+    color: '#475569',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  noteCountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  settingLabel: {
+    color: '#475569',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  counterWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  counterButton: {
+    width: 32,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f8fafc',
+  },
+  counterButtonText: {
+    color: '#334155',
+    fontSize: 16,
+    fontWeight: '800',
+    marginTop: -1,
+  },
+  counterValue: {
+    width: 34,
+    textAlign: 'center',
+    color: '#0f172a',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  toggleTrack: {
+    width: 44,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: '#cbd5e1',
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleTrackActive: {
+    backgroundColor: '#16a34a',
+  },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: '#ffffff',
+  },
+  toggleThumbActive: {
+    alignSelf: 'flex-end',
+  },
+  menuActionButton: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  menuActionLabel: {
+    color: '#334155',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  menuActionValue: {
+    color: '#1d4ed8',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  clearActionButton: {
+    borderColor: '#fecaca',
+    backgroundColor: '#fff1f2',
+  },
+  clearActionLabel: {
+    color: '#b91c1c',
+  },
+});
 
 export default FretboardGame;

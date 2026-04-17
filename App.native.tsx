@@ -1,14 +1,18 @@
 // App.native.tsx
-import "./global.css";
-import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { WebView } from 'react-native-webview';
-import FretboardGame from './src/components/FretboardGame';
+import { KEY_CONSTRAINT_OPTIONS } from './src/utils/musicTheory';
+import { useGlobalKeyConstraint } from './src/hooks/useGlobalKey.native';
+import { readSessionBoolean, readSessionJson, writeSessionBoolean, writeSessionJson } from './src/utils/viewState';
+import FretboardGame from './src/components/FretboardGame.native';
+import SandboxMode from './src/components/SandboxMode.native';
+import ChordQuizMode from './src/components/ChordQuizMode.native';
+import GalleryMode from './src/components/GalleryMode.native';
+import VisualArchetypeMode from './src/components/VisualArchetypeMode.native';
+import type { GalleryJumpRequest, ShapePresetRequest } from './src/types/nativeNavigation';
 
 type NativeTab = 'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY' | 'VISUAL_ARCHETYPE';
-
-const WEB_APP_BASE_URL = 'https://dustinbs.github.io/Fret-game/';
 
 const TAB_LABELS: Record<NativeTab, string> = {
   TRAINER: 'Trainer',
@@ -18,84 +22,56 @@ const TAB_LABELS: Record<NativeTab, string> = {
   VISUAL_ARCHETYPE: 'Visual Archetype',
 };
 
-const WEB_TAB_QUERY: Record<Exclude<NativeTab, 'TRAINER'>, string> = {
-  SANDBOX: 'sandbox',
-  QUIZ: 'quiz',
-  GALLERY: 'gallery',
-  VISUAL_ARCHETYPE: 'visualarchetype',
+const TAB_SHORT_LABELS: Record<NativeTab, string> = {
+  TRAINER: 'TR',
+  SANDBOX: 'SB',
+  QUIZ: 'QZ',
+  GALLERY: 'GL',
+  VISUAL_ARCHETYPE: 'VA',
 };
+
+const GALLERY_COLORS_KEY = 'fret-gallery-colors-native';
+const SIDEBAR_COLLAPSE_KEY = 'fret-native-sidebar-collapsed';
 
 const TAB_ORDER: NativeTab[] = ['TRAINER', 'SANDBOX', 'QUIZ', 'GALLERY', 'VISUAL_ARCHETYPE'];
 
-function NativeTabButton({
+function NativeMenuButton({
   tab,
   active,
+  collapsed,
   onPress,
 }: {
   tab: NativeTab;
   active: boolean;
+  collapsed: boolean;
   onPress: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.tabButton, active ? styles.tabButtonActive : styles.tabButtonInactive]}
+      style={[styles.sideButton, active ? styles.sideButtonActive : null, collapsed ? styles.sideButtonCollapsed : null]}
     >
-      <Text style={[styles.tabButtonText, active ? styles.tabButtonTextActive : styles.tabButtonTextInactive]}>
-        {TAB_LABELS[tab]}
+      <Text style={[styles.sideButtonText, active ? styles.sideButtonTextActive : null]}>
+        {collapsed ? TAB_SHORT_LABELS[tab] : TAB_LABELS[tab]}
       </Text>
     </Pressable>
   );
 }
 
-function EmbeddedWebMode({ tab }: { tab: Exclude<NativeTab, 'TRAINER'> }) {
-  const [reloadKey, setReloadKey] = useState(0);
-  const [hasLoadError, setHasLoadError] = useState(false);
-  const uri = useMemo(() => `${WEB_APP_BASE_URL}?tab=${WEB_TAB_QUERY[tab]}`, [tab]);
-
-  if (hasLoadError) {
-    return (
-      <View style={styles.webFallbackContainer}>
-        <Text style={styles.webFallbackTitle}>Could not load {TAB_LABELS[tab]}</Text>
-        <Text style={styles.webFallbackBody}>Check network connectivity and try again.</Text>
-        <Pressable
-          onPress={() => {
-            setHasLoadError(false);
-            setReloadKey((value) => value + 1);
-          }}
-          style={styles.retryButton}
-        >
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
-  return (
-    <WebView
-      key={`${tab}-${reloadKey}`}
-      source={{ uri }}
-      startInLoadingState
-      renderLoading={() => (
-        <View style={styles.webLoadingContainer}>
-          <ActivityIndicator size="large" color="#2563eb" />
-          <Text style={styles.webLoadingText}>Loading {TAB_LABELS[tab]}...</Text>
-        </View>
-      )}
-      onError={() => setHasLoadError(true)}
-      onHttpError={() => setHasLoadError(true)}
-      javaScriptEnabled
-      domStorageEnabled
-      sharedCookiesEnabled
-      thirdPartyCookiesEnabled
-      setSupportMultipleWindows={false}
-      style={styles.webView}
-    />
-  );
-}
-
 export default function App() {
   const [activeTab, setActiveTab] = useState<NativeTab>('TRAINER');
+  const [sidebarCollapsedByTab, setSidebarCollapsedByTab] = useState<Record<NativeTab, boolean>>(() => {
+    const persisted = readSessionJson<Partial<Record<NativeTab, boolean>>>(SIDEBAR_COLLAPSE_KEY, {});
+    return {
+      TRAINER: Boolean(persisted.TRAINER),
+      SANDBOX: Boolean(persisted.SANDBOX),
+      QUIZ: Boolean(persisted.QUIZ),
+      GALLERY: Boolean(persisted.GALLERY),
+      VISUAL_ARCHETYPE: Boolean(persisted.VISUAL_ARCHETYPE),
+    };
+  });
+  const [globalKey, setGlobalKey] = useGlobalKeyConstraint('C');
+  const [useGalleryColors, setUseGalleryColors] = useState<boolean>(() => readSessionBoolean(GALLERY_COLORS_KEY, true));
   const [mountedTabs, setMountedTabs] = useState<Record<NativeTab, boolean>>({
     TRAINER: true,
     SANDBOX: false,
@@ -103,22 +79,65 @@ export default function App() {
     GALLERY: false,
     VISUAL_ARCHETYPE: false,
   });
+  const [sandboxPresetRequest, setSandboxPresetRequest] = useState<{ id: number; preset: ShapePresetRequest } | null>(null);
+  const [galleryScrollRequest, setGalleryScrollRequest] = useState<{ id: number; quality: string } | null>(null);
+
+  useEffect(() => {
+    writeSessionBoolean(GALLERY_COLORS_KEY, useGalleryColors);
+  }, [useGalleryColors]);
+
+  useEffect(() => {
+    writeSessionJson(SIDEBAR_COLLAPSE_KEY, sidebarCollapsedByTab);
+  }, [sidebarCollapsedByTab]);
+
+  const sidebarCollapsed = sidebarCollapsedByTab[activeTab];
 
   const activateTab = (tab: NativeTab) => {
     setActiveTab(tab);
     setMountedTabs((prev) => (prev[tab] ? prev : { ...prev, [tab]: true }));
   };
 
+  const openSandboxFromShape = (request: ShapePresetRequest) => {
+    setSandboxPresetRequest({ id: Date.now(), preset: request });
+    activateTab('SANDBOX');
+  };
+
+  const openGalleryFromSandbox = (request: GalleryJumpRequest) => {
+    if (KEY_CONSTRAINT_OPTIONS.includes(request.key)) {
+      setGlobalKey(request.key);
+    }
+
+    setGalleryScrollRequest({ id: Date.now(), quality: request.quality });
+    activateTab('GALLERY');
+  };
+
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
+      <SafeAreaView style={styles.safeArea}>
         <View style={styles.container}>
-          <View style={styles.navBar}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.navScrollContent}>
+          <View style={[styles.sideRail, sidebarCollapsed ? styles.sideRailCollapsed : null]}>
+            <View style={styles.sideRailHeader}>
+              {!sidebarCollapsed ? <Text style={styles.sideRailTitle}>Modes</Text> : null}
+              <Pressable
+                onPress={() => {
+                  setSidebarCollapsedByTab((prev) => ({
+                    ...prev,
+                    [activeTab]: !prev[activeTab],
+                  }));
+                }}
+                style={styles.sideRailChevronButton}
+                hitSlop={8}
+              >
+                <Text style={styles.sideRailChevronText}>{sidebarCollapsed ? '>' : '<'}</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.sideRailList} contentContainerStyle={styles.sideRailListContent}>
               {TAB_ORDER.map((tab) => (
-                <NativeTabButton
+                <NativeMenuButton
                   key={tab}
                   tab={tab}
+                  collapsed={sidebarCollapsed}
                   active={activeTab === tab}
                   onPress={() => activateTab(tab)}
                 />
@@ -131,17 +150,46 @@ export default function App() {
               <FretboardGame />
             </View>
 
-            {(['SANDBOX', 'QUIZ', 'GALLERY', 'VISUAL_ARCHETYPE'] as const).map((tab) => {
-              if (!mountedTabs[tab]) {
-                return null;
-              }
+            {mountedTabs.SANDBOX ? (
+              <View style={[styles.screenLayer, { display: activeTab === 'SANDBOX' ? 'flex' : 'none' }]}>
+                <SandboxMode
+                  presetRequest={sandboxPresetRequest}
+                  onOpenGallery={openGalleryFromSandbox}
+                  keyConstraint={globalKey}
+                />
+              </View>
+            ) : null}
 
-              return (
-                <View key={tab} style={[styles.screenLayer, { display: activeTab === tab ? 'flex' : 'none' }]}>
-                  <EmbeddedWebMode tab={tab} />
-                </View>
-              );
-            })}
+            {mountedTabs.QUIZ ? (
+              <View style={[styles.screenLayer, { display: activeTab === 'QUIZ' ? 'flex' : 'none' }]}>
+                <ChordQuizMode />
+              </View>
+            ) : null}
+
+            {mountedTabs.GALLERY ? (
+              <View style={[styles.screenLayer, { display: activeTab === 'GALLERY' ? 'flex' : 'none' }]}>
+                <GalleryMode
+                  keyConstraint={globalKey}
+                  useGalleryColors={useGalleryColors}
+                  onToggleGalleryColors={() => setUseGalleryColors((prev) => !prev)}
+                  onChangeKeyConstraint={setGlobalKey}
+                  onOpenSandbox={openSandboxFromShape}
+                  scrollRequest={galleryScrollRequest}
+                />
+              </View>
+            ) : null}
+
+            {mountedTabs.VISUAL_ARCHETYPE ? (
+              <View style={[styles.screenLayer, { display: activeTab === 'VISUAL_ARCHETYPE' ? 'flex' : 'none' }]}>
+                <VisualArchetypeMode
+                  keyConstraint={globalKey}
+                  useGalleryColors={useGalleryColors}
+                  onToggleGalleryColors={() => setUseGalleryColors((prev) => !prev)}
+                  onChangeKeyConstraint={setGlobalKey}
+                  onOpenSandbox={openSandboxFromShape}
+                />
+              </View>
+            ) : null}
           </View>
         </View>
       </SafeAreaView>
@@ -150,46 +198,90 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: '#ffffff',
   },
-  navBar: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#cbd5e1',
-    backgroundColor: '#f8fafc',
+  container: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
   },
-  navScrollContent: {
-    paddingHorizontal: 12,
+  sideRail: {
+    width: 190,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 10,
+  },
+  sideRailCollapsed: {
+    width: 64,
+    paddingHorizontal: 6,
+  },
+  sideRailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  sideRailTitle: {
+    color: '#64748b',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  sideRailChevronButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sideRailChevronText: {
+    color: '#1e293b',
+    fontSize: 11,
+    fontWeight: '900',
+    marginTop: -1,
+  },
+  sideRailList: {
+    flex: 1,
+  },
+  sideRailListContent: {
+    gap: 6,
+    paddingBottom: 6,
+  },
+  sideButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 10,
     paddingVertical: 10,
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
   },
-  tabButton: {
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
+  sideButtonCollapsed: {
+    paddingHorizontal: 0,
   },
-  tabButtonActive: {
-    backgroundColor: '#0f172a',
-    borderColor: '#0f172a',
+  sideButtonActive: {
+    borderColor: '#2563eb',
+    backgroundColor: '#eff6ff',
   },
-  tabButtonInactive: {
-    backgroundColor: '#ffffff',
-    borderColor: '#cbd5e1',
-  },
-  tabButtonText: {
-    fontSize: 11,
-    letterSpacing: 0.8,
+  sideButtonText: {
+    color: '#334155',
+    fontSize: 10,
+    fontWeight: '800',
     textTransform: 'uppercase',
-    fontWeight: '700',
+    letterSpacing: 0.7,
   },
-  tabButtonTextActive: {
-    color: '#ffffff',
-  },
-  tabButtonTextInactive: {
-    color: '#475569',
+  sideButtonTextActive: {
+    color: '#1d4ed8',
   },
   contentArea: {
     flex: 1,
@@ -197,52 +289,5 @@ const styles = StyleSheet.create({
   },
   screenLayer: {
     ...StyleSheet.absoluteFillObject,
-  },
-  webView: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-  },
-  webLoadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ffffff',
-    gap: 12,
-  },
-  webLoadingText: {
-    color: '#475569',
-    fontWeight: '600',
-  },
-  webFallbackContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    gap: 10,
-    backgroundColor: '#ffffff',
-  },
-  webFallbackTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  webFallbackBody: {
-    textAlign: 'center',
-    color: '#64748b',
-    fontSize: 13,
-  },
-  retryButton: {
-    marginTop: 8,
-    backgroundColor: '#2563eb',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  retryButtonText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    fontSize: 11,
   },
 });

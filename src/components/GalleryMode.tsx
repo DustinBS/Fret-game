@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
-import { getIntervalHexColor, TUNING, getNoteNameFromPitchClass, getKeySignatureInfo, KEY_CONSTRAINT_OPTIONS, keySignatureUsesFlats } from '../utils/musicTheory';
+import { getNoteNameFromPitchClass, getKeySignatureInfo, KEY_CONSTRAINT_OPTIONS, keySignatureUsesFlats } from '../utils/musicTheory';
 import { DIATONIC_INTERVALS, CHORD_QUALITY_DIATONIC_MAP } from '../utils/diatonic';
 import { getGalleryOrderedChordDefinitions } from '../utils/chordOrdering';
 import { flashTableRowOverlay, scrollToTargetAndFlash } from '../utils/scrollFeedback';
 import { buildSearchWithUpdates, navigateFromClick } from '../utils/queryNavigation';
+import { buildShapeSheetPreview } from '../utils/chordShapeRendering';
 import {
   readSessionBoolean,
   readSessionJson,
@@ -92,6 +93,7 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
     };
   }, []);
 
+  // Keep a final snapshot on unmount so fast tab changes do not lose latest offsets.
   useEffect(() => {
     return () => {
       if (scrollContainerRef.current) {
@@ -190,11 +192,15 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
         className="flex-1 h-full overflow-y-auto py-1 p-4 lg:p-8 min-w-0 bg-slate-100/50"
       >
         {/*
-          IMPORTANT: keep vertical scrolling on <main> only.
-          MDN overflow behavior: when overflow-x is not visible/clip, overflow-y:visible
-          computes to auto, so this wrapper can become an unintended vertical scroll container.
-          Also keep this wrapper non-shrinking; in flex layouts, shrink+overflow-y:hidden can
-          clip rows and make the expected gallery scrollbar appear "gone".
+         CHORD GALLERY SPECIAL CASE (read before changing layout):
+         1) Vertical scroll ownership must stay on <main>. If another ancestor/wrapper starts
+           scrolling vertically, restore keys will target the wrong surface and appear broken.
+         2) With overflow-x enabled, CSS can implicitly compute overflow-y to auto when left as
+           visible; explicitly constrain y-overflow here to prevent accidental second scroller.
+         3) This wrapper must be non-shrinking in a column flex layout. Shrinking plus hidden
+           y-overflow can clip table rows and make the gallery scrollbar look "gone".
+         4) Restore uses retry logic because row heights settle after first paint (sticky cells +
+           notation rendering). One-shot timeout restore regresses on slower/colder renders.
         */}
         <div className="w-full overflow-x-auto overflow-y-hidden flex-none bg-white rounded border border-slate-200 shadow-sm">
           <table className="w-full text-left border-collapse min-w-[800px]">
@@ -258,30 +264,13 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
                         return <td key={str} className="p-4 text-center text-slate-300">-</td>;
                       }
 
-                      const stringOpenPitch = TUNING[shape.rootString];
-                      let rootFret = (actualRootPitch - (stringOpenPitch % 12) + 12) % 12;
-
-                      let minFretInShape = Math.min(...shape.offsets.map((o) => rootFret + o.offset));
-                      while (minFretInShape < 0) {
-                        rootFret += 12;
-                        minFretInShape += 12;
-                      }
-
-                      if (rootFret <= 2) {
-                        rootFret += 12;
-                      }
-
-                      const pitches = shape.offsets.map((o) => TUNING[o.string] + rootFret + o.offset);
-                      const colors = shape.offsets.map((o) => useGalleryColors ? getIntervalHexColor(o.interval || '1') : '#111111');
-
-                      const highestPitch = pitches.length > 0 ? Math.max(...pitches) : 0;
-                      const zoomSemitones = highestPitch > 77 ? highestPitch - 77 : 0;
+                      const preview = buildShapeSheetPreview(shape, actualRootPitch, useGalleryColors);
 
                       const sandboxSearch = buildSearchWithUpdates({
                         tab: 'sandbox',
                         quality: def.quality,
                         rootString: str.toString(),
-                        fretOffset: rootFret.toString(),
+                        fretOffset: preview.rootFret.toString(),
                         key: null,
                       });
 
@@ -298,13 +287,13 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
                             title={`Open ${actualRootName} ${def.quality} (String ${str + 1}) in Sandbox`}
                           >
                             <SheetMusic
-                              notes={pitches}
-                              colors={colors}
+                              notes={preview.notes}
+                              colors={preview.colors}
                               gameMode="SANDBOX"
                               useFlats={notationUsesFlats}
                               keySignature={rootObj.renderableKeyName}
                               suppressDiatonicAccidentals
-                              zoomSemitones={zoomSemitones}
+                              zoomSemitones={preview.zoomSemitones}
                             />
                           </button>
                         </td>

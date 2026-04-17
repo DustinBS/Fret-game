@@ -12,11 +12,38 @@ https://dustinbs.github.io/Fret-game/
 
 ## Native App Mode Coverage
 
-- The native app now exposes all primary product modes through an in-app tab shell:
-    - `Trainer` runs as a native React Native screen.
-    - `Sandbox`, `Quiz`, `Gallery`, and `Visual Archetype` are available inside the native app via embedded WebView tabs.
-- WebView tabs are lazily mounted and kept alive after first open so mode state is retained while switching tabs in the same session.
-- If a tab fails to load (for example due to connectivity), the app shows an inline retry state.
+- The native app now runs all primary product modes as native React Native components:
+    - `Trainer`
+    - `Sandbox`
+    - `Quiz`
+    - `Gallery`
+    - `Visual Archetype`
+- Tabs are lazily mounted and then kept alive in-memory after first open so mode state is retained while switching tabs.
+- Cross-mode deep links are handled natively (e.g. Gallery/Visual -> Sandbox shape open, Sandbox -> Gallery quality jump).
+- Shared logic is deduplicated in cross-platform hooks/utilities where possible:
+    - state helpers in `src/utils/viewState.ts`
+    - chord-shape preview math in `src/utils/chordShapeRendering.ts`
+
+## Landscape Tool UX Decisions
+
+- Primary-content-first layout: persistent top navigation was removed from native shell so working surfaces (especially fretboards) keep maximum vertical space.
+- Secondary controls moved to an on-demand menu panel instead of always-visible chrome.
+- Fretboard-first ordering in interactive modes: Sandbox and Quiz place notation + fretboard before metadata/history sections.
+- Compact control bands in Trainer: target/controls were reduced in height so fretboard remains the dominant visual region.
+- Mode and key controls remain available but are intentionally de-emphasized while practicing.
+
+## Mobile Deploy (Wireless ADB)
+
+- Run `npm run deploy_mobile` to launch Expo Android against an attached ADB device.
+- Run `npm run deploy_mobile_help` to print all script options.
+- If your device is connected over Wi-Fi, pass the wireless endpoint as the first argument:
+    - `npm run deploy_mobile -- 192.168.1.25:5555`
+- Or set an environment variable instead of passing CLI args:
+    - PowerShell: `$env:ANDROID_DEVICE_IP='192.168.1.25:5555'; npm run deploy_mobile`
+- If wireless ADB is unavailable, simplest alternatives are:
+    - `npm run start` and scan QR in Expo Go over LAN
+    - `npx expo start --tunnel` for restrictive networks
+    - `npm run android` over USB
 
 ## 1\. Game Concept & Mission
 

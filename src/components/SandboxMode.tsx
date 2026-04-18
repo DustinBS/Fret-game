@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { useSandbox } from '../hooks/useSandbox';
+import { type FretPosition, useSandbox } from '../hooks/useSandbox';
 import { Fretboard, type FretMarker } from './Fretboard';
 import SheetMusic from './SheetMusic';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
@@ -13,6 +13,161 @@ import { readSessionNumber, readSessionString, restoreScrollTopWithRetries, writ
 
 const SANDBOX_SEARCH_KEY = 'fret-sandbox-search';
 const SANDBOX_LIBRARY_SCROLL_KEY = 'fret-sandbox-library-scroll';
+
+const CHORD_CONSUMER_NOTES = [
+  'Add this file to src/utils/chords/, then run npm run format:chords to auto-register it in src/utils/chordLibrary.ts.',
+  'Sandbox chord library + URL shape loading will include it.',
+  'Quiz generation and quiz quality suggestions will include it.',
+  'Gallery tables/lists (web + native) will include it.',
+  'Visual Archetype grouping/collision views (web + native) will include it.',
+  'Data-driven tests that read CHORD_DICTIONARY will validate it (ordering, diatonic, analyzer, archetype tests).',
+];
+
+const INTERVAL_RANK: Record<string, number> = {
+  '1': 0,
+  'b2': 1,
+  '2': 2,
+  '9': 2,
+  '#9': 3,
+  'b3': 3,
+  '3': 4,
+  '4': 5,
+  '11': 5,
+  '#4': 6,
+  'b5': 6,
+  '#11': 6,
+  '5': 7,
+  '#5': 8,
+  'b6': 8,
+  '6': 9,
+  '13': 9,
+  'b7': 10,
+  '7': 11,
+};
+
+interface ExportOffset {
+  string: number;
+  offset: number;
+  interval: string;
+}
+
+interface SaveChordExportData {
+  quality: string;
+  fileName: string;
+  exportConstName: string;
+  fullFileTemplate: string;
+  shapeSnippet: string;
+}
+
+function parseDetectedChordQuality(chordName: string): string | null {
+  const namePart = chordName.split('/')[0].trim();
+  const match = namePart.match(/^([A-G][b#]?)(.*)$/);
+  if (!match) {
+    return null;
+  }
+
+  const rawQuality = match[2].trim();
+  return rawQuality.length > 0 ? rawQuality : 'maj';
+}
+
+function sanitizeQualityForFileName(quality: string): string {
+  const compact = quality.trim().replace(/\s+/g, '');
+  const sanitized = compact
+    .replace(/#/g, '_')
+    .replace(/[()/+-]/g, '_')
+    .replace(/[^a-zA-Z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  return sanitized.length > 0 ? sanitized.toLowerCase() : 'custom';
+}
+
+function formatShapeSnippet(rootString: number, offsets: ExportOffset[]): string {
+  const offsetLines = offsets
+    .map((offsetDef) => {
+      return `        {"string": ${offsetDef.string}, "offset": ${offsetDef.offset}, "interval": ${JSON.stringify(offsetDef.interval)}}`;
+    })
+    .join(',\n');
+
+  return [
+    '    {',
+    `      "rootString": ${rootString},`,
+    '      "offsets": [',
+    offsetLines,
+    '      ]',
+    '    }',
+  ].join('\n');
+}
+
+function buildSaveChordExportData(quality: string, frets: FretPosition[]): SaveChordExportData {
+  const candidateRootPositions = frets.filter((position) => position.interval === '1');
+  const anchor = [...(candidateRootPositions.length > 0 ? candidateRootPositions : frets)].sort((a, b) => {
+    if (a.stringIndex !== b.stringIndex) {
+      return b.stringIndex - a.stringIndex;
+    }
+
+    return a.fret - b.fret;
+  })[0];
+
+  const rootString = anchor?.stringIndex ?? 5;
+  const baseFret = anchor?.fret ?? 0;
+
+  const offsets = [...frets]
+    .map((position) => ({
+      string: position.stringIndex,
+      offset: position.fret - baseFret,
+      interval: position.interval ?? '1',
+    }))
+    .sort((a, b) => {
+      if (a.string !== b.string) {
+        return a.string - b.string;
+      }
+
+      return a.offset - b.offset;
+    });
+
+  const expectedIntervals = Array.from(new Set(offsets.map((offsetDef) => offsetDef.interval)))
+    .sort((a, b) => {
+      const rankA = INTERVAL_RANK[a] ?? Number.MAX_SAFE_INTEGER;
+      const rankB = INTERVAL_RANK[b] ?? Number.MAX_SAFE_INTEGER;
+      if (rankA !== rankB) {
+        return rankA - rankB;
+      }
+
+      return a.localeCompare(b);
+    });
+
+  const fileBaseName = sanitizeQualityForFileName(quality);
+  const startsWithDigit = /^\d/.test(fileBaseName);
+  const fileName = `${fileBaseName}.ts`;
+  const exportConstName = `${startsWithDigit ? `q_${fileBaseName}` : fileBaseName}Chord`;
+  const shapeSnippet = formatShapeSnippet(rootString, offsets);
+  const expectedIntervalLines = expectedIntervals
+    .map((interval) => `    ${JSON.stringify(interval)}`)
+    .join(',\n');
+
+  const fullFileTemplate = [
+    "import type { ChordDefinition } from '../chordLibrary.types';",
+    '',
+    `export const ${exportConstName}: ChordDefinition = {`,
+    `  "quality": ${JSON.stringify(quality)},`,
+    '  "shapes": [',
+    shapeSnippet,
+    '  ],',
+    '  "expectedIntervals": [',
+    expectedIntervalLines,
+    '  ]',
+    '};',
+  ].join('\n');
+
+  return {
+    quality,
+    fileName,
+    exportConstName,
+    fullFileTemplate,
+    shapeSnippet,
+  };
+}
 
 const SandboxMode: React.FC = () => {
   const {
@@ -29,12 +184,15 @@ const SandboxMode: React.FC = () => {
     setOneNotePerString
   } = useSandbox();
 
-  const { history, addHistory, clearHistory } = useHistory<any>('sandboxHistory');
+  const { history, addHistory, clearHistory } = useHistory<FretPosition[]>('sandboxHistory');
   const [keyConstraint] = useGlobalKeyConstraint('C');
 
   const [search, setSearch] = useState(() => readSessionString(SANDBOX_SEARCH_KEY, ''));
   const chordLibraryRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+  const [saveChordExport, setSaveChordExport] = useState<SaveChordExportData | null>(null);
+  const [copiedTarget, setCopiedTarget] = useState<'full' | 'shape' | null>(null);
 
   const STRING_NAMES: Record<number, string> = {
     5: "Str 6E",
@@ -84,7 +242,7 @@ const SandboxMode: React.FC = () => {
         if (quality && rootString && fretOffset) {
           const def = CHORD_DICTIONARY.find(c => c.quality === quality);
           if (def) {
-            const shape = def.shapes.find((s: any) => s.rootString === parseInt(rootString, 10));
+            const shape = def.shapes.find((candidate) => candidate.rootString === parseInt(rootString, 10));
             if (shape) {
               setChordShape(def, shape, parseInt(fretOffset, 10));
             }
@@ -98,9 +256,28 @@ const SandboxMode: React.FC = () => {
     handleUrlState();
     window.addEventListener('popstate', handleUrlState);
     return () => window.removeEventListener('popstate', handleUrlState);
-  }, []);
+  }, [setChordShape]);
 
   const orderedChordDefinitions = useMemo(() => getGalleryOrderedChordDefinitions(CHORD_DICTIONARY), []);
+
+  const copyToClipboard = async (text: string, target: 'full' | 'shape') => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedTarget(target);
+      return;
+    } catch {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      document.execCommand('copy');
+      textArea.remove();
+      setCopiedTarget(target);
+    }
+  };
 
   const filteredChords = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -122,7 +299,7 @@ const SandboxMode: React.FC = () => {
     label: p.interval || undefined
   }));
 
-  const getGhostClass = (_sIdx: number, _fret: number) => {
+  const getGhostClass = () => {
     return "scale-0 group-hover:scale-75 group-hover:bg-blue-300/50 transition-all";
   };
 
@@ -207,7 +384,7 @@ const SandboxMode: React.FC = () => {
             {filteredChords.map(def => (
                <div key={def.quality} className="border-b border-slate-100 last:border-0 p-2">
                  <div className="font-bold text-sm mb-1">{def.quality}</div>
-                 <div className="flex gap-1 justify-between">{[5,4,3].map((strIdx) => { const shape = def.shapes.find((s: any) => s.rootString === strIdx); if (shape) { return (<button key={strIdx} onClick={() => { const newPositions = setChordShape(def, shape); addHistory(`${def.quality} (Str ${shape.rootString + 1})`, newPositions); }} className="flex-1 text-[10px] bg-slate-100 hover:bg-blue-100 text-slate-700 px-1 py-1 rounded text-center whitespace-nowrap">{STRING_NAMES[shape.rootString] || `Str ${shape.rootString + 1}`}</button>); } else { return (<button key={strIdx} disabled title="none found" className="flex-1 text-[10px] bg-slate-50 text-slate-300 px-1 py-1 rounded border border-slate-100 cursor-not-allowed text-center whitespace-nowrap">{STRING_NAMES[strIdx] || `Str ${strIdx + 1}`}</button>); } })}</div>
+                 <div className="flex gap-1 justify-between">{[5,4,3].map((strIdx) => { const shape = def.shapes.find((candidate) => candidate.rootString === strIdx); if (shape) { return (<button key={strIdx} onClick={() => { const newPositions = setChordShape(def, shape); addHistory(`${def.quality} (Str ${shape.rootString + 1})`, newPositions); }} className="flex-1 text-[10px] bg-slate-100 hover:bg-blue-100 text-slate-700 px-1 py-1 rounded text-center whitespace-nowrap">{STRING_NAMES[shape.rootString] || `Str ${shape.rootString + 1}`}</button>); } else { return (<button key={strIdx} disabled title="none found" className="flex-1 text-[10px] bg-slate-50 text-slate-300 px-1 py-1 rounded border border-slate-100 cursor-not-allowed text-center whitespace-nowrap">{STRING_NAMES[strIdx] || `Str ${strIdx + 1}`}</button>); } })}</div>
                </div>
             ))}
           </div>
@@ -253,7 +430,22 @@ const SandboxMode: React.FC = () => {
                   </div>
                   <div className="flex gap-2 mt-2">
                     <button 
-                      onClick={() => addHistory(analyzedChords[selectedChordIndex].name, clickedFrets)}
+                      onClick={() => {
+                        const selected = analyzedChords[selectedChordIndex];
+                        if (!selected) {
+                          return;
+                        }
+
+                        const quality = parseDetectedChordQuality(selected.name);
+                        if (!quality) {
+                          return;
+                        }
+
+                        addHistory(selected.name, clickedFrets);
+                        setCopiedTarget(null);
+                        setSaveChordExport(buildSaveChordExportData(quality, clickedFrets));
+                        setIsSaveModalOpen(true);
+                      }}
                       className="text-[10px] px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded uppercase tracking-widest transition"
                     >
                       Save Chord
@@ -266,9 +458,9 @@ const SandboxMode: React.FC = () => {
                         const match = namePart.match(/^([A-G][b#]?)(.*)$/);
                         if (!match) return;
 
-                        let key = match[1];
-                        let originalQuality = match[2].trim();
-                        let galleryQuality = originalQuality;
+                        const key = match[1];
+                        const originalQuality = match[2].trim();
+                        const galleryQuality = originalQuality;
 
                         const gallerySearch = buildSearchWithUpdates({
                           tab: 'gallery',
@@ -332,6 +524,87 @@ const SandboxMode: React.FC = () => {
         <HistoryPanel history={history} onClear={clearHistory} onRestore={(state) => setClickedFrets(state)} />
         <LegendPanel />
       </aside>
+
+      {isSaveModalOpen && saveChordExport ? (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4"
+          onClick={() => setIsSaveModalOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="save-chord-title"
+            className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-lg border border-slate-300 bg-white shadow-xl p-5 select-text"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
+              <h2 id="save-chord-title" className="text-sm font-black uppercase tracking-wider text-slate-800">
+                Save Chord Export
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsSaveModalOpen(false)}
+                className="text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-slate-800"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-5">
+              <div className="text-xs text-slate-600 space-y-1">
+                <p>
+                  Paste the full template into <span className="font-bold">src/utils/chords/{saveChordExport.fileName}</span> to add this chord definition.
+                </p>
+                <p>
+                  Quality detected: <span className="font-bold">{saveChordExport.quality}</span>
+                  {' | '}Export const: <span className="font-bold">{saveChordExport.exportConstName}</span>
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Data-Driven Consumers</div>
+                <ul className="text-xs text-slate-600 list-disc pl-5 space-y-1">
+                  {CHORD_CONSUMER_NOTES.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Full File Template</div>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(saveChordExport.fullFileTemplate, 'full')}
+                    className="text-[10px] px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded uppercase tracking-widest transition"
+                  >
+                    {copiedTarget === 'full' ? 'Copied' : 'Copy to Clipboard'}
+                  </button>
+                </div>
+                <pre className="text-[11px] leading-relaxed bg-slate-950 text-slate-100 rounded p-3 overflow-x-auto border border-slate-700 select-text cursor-text">
+{saveChordExport.fullFileTemplate}
+                </pre>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Shape Snippet (for existing file)</div>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(saveChordExport.shapeSnippet, 'shape')}
+                    className="text-[10px] px-3 py-1 bg-slate-700 hover:bg-slate-800 text-white font-bold rounded uppercase tracking-widest transition"
+                  >
+                    {copiedTarget === 'shape' ? 'Copied' : 'Copy to Clipboard'}
+                  </button>
+                </div>
+                <pre className="text-[11px] leading-relaxed bg-slate-100 text-slate-900 rounded p-3 overflow-x-auto border border-slate-200 select-text cursor-text">
+{saveChordExport.shapeSnippet}
+                </pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

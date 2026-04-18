@@ -16,7 +16,8 @@
     "android_wireless_setup": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-wireless-adb.ps1",
     "ios": "npx expo start --ios",
     "start": "npx expo start",
-    "test": "vitest run"
+    "test": "vitest run",
+    "format:chords": "node ./scripts/format-chords.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",

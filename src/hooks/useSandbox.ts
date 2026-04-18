@@ -1,7 +1,8 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { TUNING, semitoneToIntervalString } from '../utils/musicTheory';
 import { analyzeChord } from '../utils/chordAnalyzer';
 import { readSessionJson, writeSessionJson } from '../utils/viewState';
+import type { ChordDefinition, ChordShape } from '../utils/chordLibrary.types';
 
 export type FretPosition = { stringIndex: number; fret: number; interval?: string };
 
@@ -86,7 +87,7 @@ export const useSandbox = () => {
     setSelectedChordIndex(0);
   };
 
-  const setChordShape = (definition: any, shape: any, baseFretOffset?: number) => {
+  const setChordShape = useCallback((definition: ChordDefinition, shape: ChordShape, baseFretOffset?: number) => {
     // If a base fret wasn't provided, try a small range of base positions (0-12)
     // and pick one where the analyzer recognizes the same quality. This prevents
     // showing shapes at open-position pitches that accidentally resolve to other chord types
@@ -97,34 +98,34 @@ export const useSandbox = () => {
     } else {
       for (let candidate = 0; candidate <= 12; candidate++) {
         // compute pitches for this candidate base
-        const candidatePitches = shape.offsets.map((so: any) => TUNING[so.string] + so.offset + candidate);
+        const candidatePitches = shape.offsets.map((offsetDef) => TUNING[offsetDef.string] + offsetDef.offset + candidate);
         const recognized = analyzeChord(candidatePitches);
-        const matchesQuality = recognized.some((r) => r.name.includes(` ${definition.quality}`) || r.name.includes(` ${definition.quality} /`));
+        const matchesQuality = recognized.some((result) => result.name.includes(` ${definition.quality}`) || result.name.includes(` ${definition.quality} /`));
         if (matchesQuality) {
           chosenBase = candidate;
           break;
         }
       }
       if (chosenBase === null) {
-        chosenBase = Math.max(0, -Math.min(...shape.offsets.map((so: any) => so.offset)));
+        chosenBase = Math.max(0, -Math.min(...shape.offsets.map((offsetDef) => offsetDef.offset)));
       }
     }
 
     let adjustedBaseFretOffset = chosenBase;
-    let minFretInShape = Math.min(...shape.offsets.map((so: any) => so.offset + adjustedBaseFretOffset));
+    let minFretInShape = Math.min(...shape.offsets.map((offsetDef) => offsetDef.offset + adjustedBaseFretOffset));
     while (minFretInShape < 0) {
       adjustedBaseFretOffset += 12;
       minFretInShape += 12;
     }
 
     const newPositions: FretPosition[] = [];
-    shape.offsets.forEach((so: any) => {
-      newPositions.push({ stringIndex: so.string, fret: so.offset + adjustedBaseFretOffset, interval: so.interval });
+    shape.offsets.forEach((offsetDef) => {
+      newPositions.push({ stringIndex: offsetDef.string, fret: offsetDef.offset + adjustedBaseFretOffset, interval: offsetDef.interval });
     });
     setClickedFrets(newPositions);
     setSelectedChordName(`${definition.quality} (String ${shape.rootString + 1} root)`);
     return newPositions; // Return new positions so callers can use the plausible ones
-  };
+  }, []);
 
   const analyzedChords = useMemo(() => {
     if (clickedFrets.length === 0) return [];

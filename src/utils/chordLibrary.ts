@@ -11,20 +11,20 @@ import { dim7Chord } from './chords/dim7';
 import { majChord } from './chords/maj';
 import { maj13Chord } from './chords/maj13';
 import { maj6Chord } from './chords/maj6';
-import { maj7Chord } from './chords/maj7';
 import { maj7_11Chord } from './chords/maj7_11';
+import { maj7Chord } from './chords/maj7';
 import { maj9Chord } from './chords/maj9';
+import { min_b13_Chord } from './chords/min_b13_';
 import { minChord } from './chords/min';
-import { min11Chord } from './chords/min11';
 import { min11_b5_Chord } from './chords/min11_b5_';
+import { min11Chord } from './chords/min11';
 import { min13Chord } from './chords/min13';
 import { min6Chord } from './chords/min6';
+import { min7_b13_Chord } from './chords/min7_b13_';
 import { min7Chord } from './chords/min7';
 import { min7b5Chord } from './chords/min7b5';
-import { min7_b13_Chord } from './chords/min7_b13_';
 import { min9Chord } from './chords/min9';
 import { minb6Chord } from './chords/minb6';
-import { min_b13_Chord } from './chords/min_b13_';
 import { sus2Chord } from './chords/sus2';
 import { sus4Chord } from './chords/sus4';
 
@@ -40,20 +40,20 @@ export const CHORD_DICTIONARY: ChordDefinition[] = [
   majChord,
   maj13Chord,
   maj6Chord,
-  maj7Chord,
   maj7_11Chord,
+  maj7Chord,
   maj9Chord,
+  min_b13_Chord,
   minChord,
-  min11Chord,
   min11_b5_Chord,
+  min11Chord,
   min13Chord,
   min6Chord,
+  min7_b13_Chord,
   min7Chord,
   min7b5Chord,
-  min7_b13_Chord,
   min9Chord,
   minb6Chord,
-  min_b13_Chord,
   sus2Chord,
   sus4Chord
 ];

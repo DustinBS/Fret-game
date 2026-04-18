@@ -119,7 +119,7 @@ const FretboardGame: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-white text-slate-900 font-sans select-none">
+    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-white text-slate-900 font-sans">
 
       {/* SIDEBAR NAVIGATION */}
       <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-r border-slate-200 flex flex-col p-6 gap-8 shrink-0">

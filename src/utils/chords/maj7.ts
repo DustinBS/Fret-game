@@ -29,6 +29,15 @@ export const maj7Chord: ChordDefinition = {
         {"string": 2, "offset": 2, "interval": "5"},
         {"string": 3, "offset": 0, "interval": "1"}
       ]
+    },
+    {
+      "rootString": 3,
+      "offsets": [
+        {"string": 0, "offset": -3, "interval": "7"},
+        {"string": 1, "offset": -2, "interval": "5"},
+        {"string": 2, "offset": -1, "interval": "3"},
+        {"string": 3, "offset": 0, "interval": "1"}
+      ]
     }
   ],
   "expectedIntervals": [

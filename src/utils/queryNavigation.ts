@@ -5,7 +5,16 @@ export interface QueryNavigationClickEvent {
   preventDefault?: () => void;
 }
 
+export interface QueryNavigationMouseDownEvent {
+  button?: number;
+  preventDefault?: () => void;
+}
+
 export type QueryParamUpdates = Record<string, string | null | undefined>;
+
+function isUnsupportedAuxButton(event: QueryNavigationClickEvent): boolean {
+  return typeof event.button === 'number' && event.button > 1;
+}
 
 function wantsNewTab(event: QueryNavigationClickEvent): boolean {
   return event.ctrlKey || event.metaKey || event.button === 1;
@@ -14,6 +23,12 @@ function wantsNewTab(event: QueryNavigationClickEvent): boolean {
 function toRelativeUrl(search: string): string {
   const normalizedSearch = search.startsWith('?') || search === '' ? search : `?${search}`;
   return `${window.location.pathname}${normalizedSearch}${window.location.hash}`;
+}
+
+export function preventMiddleMouseDefault(event: QueryNavigationMouseDownEvent): void {
+  if (event.button === 1) {
+    event.preventDefault?.();
+  }
 }
 
 export function buildSearchWithUpdates(
@@ -55,6 +70,10 @@ export function navigateFromClick(
   search: string,
   options: { replace?: boolean } = {},
 ): void {
+  if (isUnsupportedAuxButton(event)) {
+    return;
+  }
+
   if (wantsNewTab(event)) {
     event.preventDefault?.();
     window.open(toRelativeUrl(search), '_blank', 'noopener,noreferrer');

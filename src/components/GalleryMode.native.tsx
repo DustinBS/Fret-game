@@ -8,7 +8,6 @@ import {
   keySignatureUsesFlats,
 } from '../utils/musicTheory';
 import { DIATONIC_INTERVALS, CHORD_QUALITY_DIATONIC_MAP } from '../utils/diatonic';
-import { getGalleryOrderedChordDefinitions } from '../utils/chordOrdering';
 import {
   readSessionBoolean,
   readSessionJson,
@@ -21,10 +20,16 @@ import { buildShapeSheetPreview } from '../utils/chordShapeRendering';
 import type { ShapePresetRequest } from '../types/nativeNavigation';
 import SheetMusic from './SheetMusic';
 import { LegendPanel } from './LegendPanel';
+import {
+  buildShapeSelectionStateKey,
+  getRootStringShapeOptions,
+} from '../utils/chordVoicing';
+import { buildOrderedChordEntries, buildQualityDisplayLabelMap } from '../utils/chordEntries';
 
 const GALLERY_MAIN_SCROLL_KEY = 'fret-gallery-main-scroll';
 const GALLERY_SHOW_DIATONIC_KEY = 'fret-gallery-show-diatonic';
 const GALLERY_SELECTED_DIATONIC_KEY = 'fret-gallery-selected-diatonic';
+const GALLERY_SELECTED_VOICING_KEY = 'fret-gallery-selected-voicing-native';
 
 const STRING_SHAPES = [5, 4, 3] as const;
 
@@ -34,7 +39,7 @@ interface GalleryModeProps {
   onToggleGalleryColors?: () => void;
   onChangeKeyConstraint?: (next: string) => void;
   onOpenSandbox?: (request: ShapePresetRequest) => void;
-  scrollRequest?: { id: number; quality: string } | null;
+  scrollRequest?: { id: number; quality: string; chordId?: string } | null;
 }
 
 const GalleryMode: React.FC<GalleryModeProps> = ({
@@ -49,6 +54,9 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
   const [selectedDiatonic, setSelectedDiatonic] = useState<Record<string, string>>(
     () => readSessionJson<Record<string, string>>(GALLERY_SELECTED_DIATONIC_KEY, {}),
   );
+  const [selectedVoicingByRoot, setSelectedVoicingByRoot] = useState<Record<string, string>>(
+    () => readSessionJson<Record<string, string>>(GALLERY_SELECTED_VOICING_KEY, {}),
+  );
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isChordListOpen, setIsChordListOpen] = useState(false);
   const [isKeyPickerOpen, setIsKeyPickerOpen] = useState(false);
@@ -56,17 +64,22 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
 
   const scrollRef = useRef<ScrollView>(null);
   const qualityOffsetsRef = useRef<Record<string, number>>({});
-  const [pendingScrollQuality, setPendingScrollQuality] = useState<string | null>(null);
+  const [pendingScrollTarget, setPendingScrollTarget] = useState<{ quality: string; chordId?: string } | null>(null);
 
-  const orderedChordDefs = useMemo(() => getGalleryOrderedChordDefinitions(CHORD_DICTIONARY), []);
-  const filteredChordDefs = useMemo(() => {
+  const orderedChordEntries = useMemo(() => buildOrderedChordEntries(CHORD_DICTIONARY), []);
+  const qualityDisplayLabelMap = useMemo(() => buildQualityDisplayLabelMap(orderedChordEntries), [orderedChordEntries]);
+  const filteredChordEntries = useMemo(() => {
     const query = qualitySearch.trim().toLowerCase();
     if (!query) {
-      return orderedChordDefs;
+      return orderedChordEntries;
     }
 
-    return orderedChordDefs.filter((definition) => definition.quality.toLowerCase().includes(query));
-  }, [orderedChordDefs, qualitySearch]);
+    return orderedChordEntries.filter(({ definition }) => definition.quality.toLowerCase().includes(query));
+  }, [orderedChordEntries, qualitySearch]);
+
+  const getDisplayQuality = (chordId: string, quality: string): string => {
+    return qualityDisplayLabelMap.get(chordId) ?? quality;
+  };
 
   const rootObj = useMemo(() => getKeySignatureInfo(keyConstraint), [keyConstraint]);
   const notationUsesFlats = useMemo(
@@ -81,6 +94,10 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
   useEffect(() => {
     writeSessionJson(GALLERY_SELECTED_DIATONIC_KEY, selectedDiatonic);
   }, [selectedDiatonic]);
+
+  useEffect(() => {
+    writeSessionJson(GALLERY_SELECTED_VOICING_KEY, selectedVoicingByRoot);
+  }, [selectedVoicingByRoot]);
 
   useEffect(() => {
     // Native card surfaces can report layout over multiple frames. Restore after an
@@ -102,31 +119,40 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
       return;
     }
 
-    setPendingScrollQuality(scrollRequest.quality);
+    setPendingScrollTarget({
+      quality: scrollRequest.quality,
+      chordId: scrollRequest.chordId,
+    });
   }, [scrollRequest]);
 
   useEffect(() => {
-    if (!pendingScrollQuality) {
+    if (!pendingScrollTarget) {
       return;
     }
 
-    const y = qualityOffsetsRef.current[pendingScrollQuality];
+    const y = pendingScrollTarget.chordId
+      ? qualityOffsetsRef.current[pendingScrollTarget.chordId]
+      : qualityOffsetsRef.current[pendingScrollTarget.quality];
+
     if (y === undefined) {
       return;
     }
 
     scrollRef.current?.scrollTo({ y: Math.max(0, y - 10), animated: true });
-    setPendingScrollQuality(null);
-  }, [pendingScrollQuality, selectedDiatonic, showDiatonic]);
+    setPendingScrollTarget(null);
+  }, [pendingScrollTarget, selectedDiatonic, showDiatonic]);
 
-  const scrollToQuality = (quality: string) => {
-    const y = qualityOffsetsRef.current[quality];
+  const scrollToQuality = (quality: string, chordId?: string) => {
+    const y = chordId
+      ? qualityOffsetsRef.current[chordId]
+      : qualityOffsetsRef.current[quality];
+
     if (y !== undefined) {
       scrollRef.current?.scrollTo({ y: Math.max(0, y - 10), animated: true });
       return;
     }
 
-    setPendingScrollQuality(quality);
+    setPendingScrollTarget({ quality, chordId });
   };
 
   return (
@@ -163,10 +189,10 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
         }}
         scrollEventThrottle={16}
       >
-        {orderedChordDefs.map((definition) => {
+        {orderedChordEntries.map(({ definition, chordId }) => {
           const diatonicOptions = CHORD_QUALITY_DIATONIC_MAP[definition.quality] || [];
           const hasDiatonic = diatonicOptions.length > 0;
-          const activeDiatonic = selectedDiatonic[definition.quality] || diatonicOptions[0];
+          const activeDiatonic = selectedDiatonic[chordId] || diatonicOptions[0];
           const offsetFromKey =
             showDiatonic && hasDiatonic && DIATONIC_INTERVALS[activeDiatonic] !== undefined
               ? DIATONIC_INTERVALS[activeDiatonic]
@@ -174,16 +200,21 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
 
           const actualRootPitch = (rootObj.pitchClass + offsetFromKey) % 12;
           const actualRootName = getNoteNameFromPitchClass(actualRootPitch, notationUsesFlats);
+          const displayQuality = getDisplayQuality(chordId, definition.quality);
 
           return (
             <View
-              key={definition.quality}
+              key={chordId}
               style={styles.card}
               onLayout={(event) => {
-                qualityOffsetsRef.current[definition.quality] = event.nativeEvent.layout.y;
-                if (pendingScrollQuality === definition.quality) {
+                qualityOffsetsRef.current[chordId] = event.nativeEvent.layout.y;
+                if (qualityOffsetsRef.current[definition.quality] === undefined) {
+                  qualityOffsetsRef.current[definition.quality] = event.nativeEvent.layout.y;
+                }
+
+                if (pendingScrollTarget?.chordId === chordId || (!pendingScrollTarget?.chordId && pendingScrollTarget?.quality === definition.quality)) {
                   scrollRef.current?.scrollTo({ y: Math.max(0, event.nativeEvent.layout.y - 10), animated: true });
-                  setPendingScrollQuality(null);
+                  setPendingScrollTarget(null);
                 }
               }}
             >
@@ -191,7 +222,7 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
                 <View>
                   <Text style={styles.cardTitle}>
                     {showDiatonic && hasDiatonic ? `${actualRootName} ` : ''}
-                    {definition.quality}
+                    {displayQuality}
                   </Text>
                   <Text style={styles.cardSubtitle}>Key: {rootObj.renderableKeyName}</Text>
                 </View>
@@ -210,7 +241,7 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
                         <Pressable
                           key={`${definition.quality}-${option}`}
                           style={[styles.diatonicChip, active ? styles.diatonicChipActive : null]}
-                          onPress={() => setSelectedDiatonic((prev) => ({ ...prev, [definition.quality]: option }))}
+                          onPress={() => setSelectedDiatonic((prev) => ({ ...prev, [chordId]: option }))}
                         >
                           <Text style={[styles.diatonicChipText, active ? styles.diatonicChipTextActive : null]}>{option}</Text>
                         </Pressable>
@@ -224,41 +255,75 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
 
               <View style={styles.shapeRow}>
                 {STRING_SHAPES.map((rootString) => {
-                  const shape = definition.shapes.find((candidate) => candidate.rootString === rootString);
-                  if (!shape) {
+                  const rootStringOptions = getRootStringShapeOptions(definition, rootString);
+                  if (rootStringOptions.length === 0) {
                     return (
-                      <View key={`${definition.quality}-${rootString}`} style={[styles.shapeCard, styles.shapeCardDisabled]}>
-                        <Text style={styles.shapeCardDisabledText}>Str {rootString + 1}</Text>
-                        <Text style={styles.shapeCardDisabledText}>N/A</Text>
+                      <View key={`${chordId}-${rootString}`} style={styles.shapeColumn}>
+                        <View style={[styles.shapeCard, styles.shapeCardDisabled]}>
+                          <Text style={styles.shapeCardDisabledText}>Str {rootString + 1}</Text>
+                          <Text style={styles.shapeCardDisabledText}>N/A</Text>
+                        </View>
                       </View>
                     );
                   }
 
-                  const preview = buildShapeSheetPreview(shape, actualRootPitch, useGalleryColors);
+                  const voicingSelectionKey = buildShapeSelectionStateKey(chordId, rootString);
+                  const selectedRootVoicing = selectedVoicingByRoot[voicingSelectionKey];
+                  const activeOption = rootStringOptions.find((option) => option.rootVoicing === selectedRootVoicing) ?? rootStringOptions[0];
+                  const preview = buildShapeSheetPreview(activeOption.shape, actualRootPitch, useGalleryColors);
 
                   return (
-                    <Pressable
-                      key={`${definition.quality}-${rootString}`}
-                      style={styles.shapeCard}
-                      onPress={() => {
-                        onOpenSandbox?.({
-                          quality: definition.quality,
-                          rootString,
-                          fretOffset: preview.rootFret,
-                        });
-                      }}
-                    >
+                    <View key={`${chordId}-${rootString}`} style={styles.shapeColumn}>
                       <Text style={styles.shapeCardTitle}>Str {rootString + 1}</Text>
-                      <SheetMusic
-                        notes={preview.notes}
-                        colors={preview.colors}
-                        gameMode="SANDBOX"
-                        useFlats={notationUsesFlats}
-                        keySignature={rootObj.renderableKeyName}
-                        suppressDiatonicAccidentals
-                        zoomSemitones={preview.zoomSemitones}
-                      />
-                    </Pressable>
+
+                      {rootStringOptions.length > 1 ? (
+                        <View style={styles.voicingChipRow}>
+                          {rootStringOptions.map((option) => {
+                            const active = option.rootVoicing === activeOption.rootVoicing;
+                            return (
+                              <Pressable
+                                key={`${chordId}-${rootString}-${option.rootVoicing}-${option.shapeIndex}`}
+                                style={[styles.voicingChip, active ? styles.voicingChipActive : null]}
+                                onPress={() => {
+                                  setSelectedVoicingByRoot((prev) => ({
+                                    ...prev,
+                                    [voicingSelectionKey]: option.rootVoicing,
+                                  }));
+                                }}
+                              >
+                                <Text style={[styles.voicingChipText, active ? styles.voicingChipTextActive : null]}>{option.rootVoicing}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      ) : (
+                        <Text style={styles.singleVoicingText}>{activeOption.rootVoicing}</Text>
+                      )}
+
+                      <Pressable
+                        style={styles.shapeCard}
+                        onPress={() => {
+                          onOpenSandbox?.({
+                            chordId,
+                            quality: definition.quality,
+                            rootString,
+                            rootVoicing: activeOption.rootVoicing,
+                            shapeIndex: activeOption.shapeIndex,
+                            fretOffset: preview.rootFret,
+                          });
+                        }}
+                      >
+                        <SheetMusic
+                          notes={preview.notes}
+                          colors={preview.colors}
+                          gameMode="SANDBOX"
+                          useFlats={notationUsesFlats}
+                          keySignature={rootObj.renderableKeyName}
+                          suppressDiatonicAccidentals
+                          zoomSemitones={preview.zoomSemitones}
+                        />
+                      </Pressable>
+                    </View>
                   );
                 })}
               </View>
@@ -308,16 +373,16 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
             />
 
             <ScrollView style={styles.modalList} contentContainerStyle={styles.modalListContent}>
-              {filteredChordDefs.map((definition) => (
+              {filteredChordEntries.map(({ definition, chordId }) => (
                 <Pressable
-                  key={definition.quality}
+                  key={chordId}
                   style={styles.modalListItem}
                   onPress={() => {
-                    scrollToQuality(definition.quality);
+                    scrollToQuality(definition.quality, chordId);
                     setIsChordListOpen(false);
                   }}
                 >
-                  <Text style={styles.modalListItemText}>{definition.quality}</Text>
+                  <Text style={styles.modalListItemText}>{getDisplayQuality(chordId, definition.quality)}</Text>
                 </Pressable>
               ))}
             </ScrollView>
@@ -634,9 +699,19 @@ const styles = StyleSheet.create({
     gap: 8,
     flexWrap: 'wrap',
   },
-  shapeCard: {
+  shapeColumn: {
     flex: 1,
     minWidth: 100,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    gap: 6,
+    alignItems: 'stretch',
+  },
+  shapeCard: {
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#cbd5e1',
@@ -645,6 +720,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     alignItems: 'center',
     gap: 6,
+  },
+  voicingChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'center',
+  },
+  voicingChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  voicingChipActive: {
+    borderColor: '#2563eb',
+    backgroundColor: '#2563eb',
+  },
+  voicingChipText: {
+    color: '#475569',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  voicingChipTextActive: {
+    color: '#ffffff',
+  },
+  singleVoicingText: {
+    textAlign: 'center',
+    color: '#64748b',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   shapeCardDisabled: {
     borderColor: '#e2e8f0',

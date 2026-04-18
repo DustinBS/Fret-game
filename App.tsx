@@ -6,7 +6,7 @@ import ChordQuizMode from './src/components/ChordQuizMode';
 import GalleryMode from './src/components/GalleryMode';
 import VisualArchetypeMode from './src/components/VisualArchetypeMode';
 import { KEY_CONSTRAINT_OPTIONS, getKeySignatureInfo } from './src/utils/musicTheory';
-import { buildSearchWithUpdates, navigateFromClick } from './src/utils/queryNavigation';
+import { buildSearchWithUpdates, navigateFromClick, preventMiddleMouseDefault } from './src/utils/queryNavigation';
 
 function App() {
   const [activeTab, setActiveTabState] = useState<'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY' | 'VISUAL_ARCHETYPE'>('TRAINER');
@@ -64,30 +64,40 @@ function App() {
       <nav className="flex space-x-4 border-b border-slate-200 px-6 py-3 bg-slate-50 items-center">
         <button 
           onClick={(event) => handleTabClick(event, 'TRAINER')}
+          onAuxClick={(event) => handleTabClick(event, 'TRAINER')}
+          onMouseDown={preventMiddleMouseDefault}
           className={`text-sm font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${activeTab === 'TRAINER' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-200'}`}
         >
           Trainer
         </button>
         <button 
           onClick={(event) => handleTabClick(event, 'SANDBOX')}
+          onAuxClick={(event) => handleTabClick(event, 'SANDBOX')}
+          onMouseDown={preventMiddleMouseDefault}
           className={`text-sm font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${activeTab === 'SANDBOX' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-200'}`}
         >
           Sandbox
         </button>
         <button 
           onClick={(event) => handleTabClick(event, 'QUIZ')}
+          onAuxClick={(event) => handleTabClick(event, 'QUIZ')}
+          onMouseDown={preventMiddleMouseDefault}
           className={`text-sm font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${activeTab === 'QUIZ' ? 'bg-green-600 text-white' : 'text-slate-500 hover:bg-slate-200'}`}
         >
           Quiz
         </button>
         <button 
           onClick={(event) => handleTabClick(event, 'GALLERY')}
+          onAuxClick={(event) => handleTabClick(event, 'GALLERY')}
+          onMouseDown={preventMiddleMouseDefault}
           className={`text-sm font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${activeTab === 'GALLERY' ? 'bg-purple-600 text-white' : 'text-slate-500 hover:bg-slate-200'}`}
         >
           Gallery
         </button>
         <button 
           onClick={(event) => handleTabClick(event, 'VISUAL_ARCHETYPE')}
+          onAuxClick={(event) => handleTabClick(event, 'VISUAL_ARCHETYPE')}
+          onMouseDown={preventMiddleMouseDefault}
           className={`text-sm font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${activeTab === 'VISUAL_ARCHETYPE' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-200'}`}
         >
           Visual Archetype

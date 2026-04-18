@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 
 export interface HistoryItem<T = any> {
     label: string;
@@ -41,9 +41,15 @@ interface HistoryPanelProps<T = any> {
     onClear: () => void;
     onRestore?: (state: T) => void;
     getLabelClassName?: (item: HistoryItem<T>) => string;
+    renderLabel?: (item: HistoryItem<T>) => ReactNode;
 }
 
 export function getCorrectMissHistoryLabelClass<T>(item: HistoryItem<T>): string {
+    const stateCandidate = item.state as { wasCorrect?: unknown } | undefined;
+    if (typeof stateCandidate?.wasCorrect === 'boolean') {
+        return stateCandidate.wasCorrect ? 'text-emerald-600' : 'text-red-600';
+    }
+
     if (item.label.includes('(Correct)')) {
         return 'text-emerald-600';
     }
@@ -55,7 +61,7 @@ export function getCorrectMissHistoryLabelClass<T>(item: HistoryItem<T>): string
     return '';
 }
 
-export const HistoryPanel = <T,>({ history, onClear, onRestore, getLabelClassName }: HistoryPanelProps<T>) => {
+export const HistoryPanel = <T,>({ history, onClear, onRestore, getLabelClassName, renderLabel }: HistoryPanelProps<T>) => {
     if (history.length === 0) return null;
 
     return (
@@ -69,10 +75,23 @@ export const HistoryPanel = <T,>({ history, onClear, onRestore, getLabelClassNam
                     <div
                         key={item.timestamp}
                         className={`text-sm bg-slate-100 p-2 rounded flex justify-between items-center ${item.state ? 'cursor-pointer hover:bg-slate-200 active:bg-slate-300 transition' : ''}`}
-                        onClick={() => onRestore && item.state && onRestore(item.state)}
+                        onClick={() => {
+                            if (!onRestore || !item.state) {
+                                return;
+                            }
+
+                            const selectedText = window.getSelection?.()?.toString() ?? '';
+                            if (selectedText.length > 0) {
+                                return;
+                            }
+
+                            onRestore(item.state);
+                        }}
                     >
-                        <span className={`font-bold select-none ${getLabelClassName ? getLabelClassName(item) : 'text-slate-700'}`}>{item.label}</span>
-                        <span className="text-[10px] text-slate-400 select-none ml-2">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className={`font-bold ${getLabelClassName ? getLabelClassName(item) : 'text-slate-700'}`}>
+                            {renderLabel ? renderLabel(item) : item.label}
+                        </span>
+                        <span className="text-[10px] text-slate-400 ml-2">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                 ))}
             </div>

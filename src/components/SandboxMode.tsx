@@ -7,9 +7,17 @@ import { getIntervalColor, getIntervalHexColor, getKeySignatureInfo, getNoteName
 import { useHistory, HistoryPanel } from './History';
 import { LegendPanel } from './LegendPanel';
 import { useGlobalKeyConstraint } from '../hooks/useGlobalKey';
-import { buildSearchWithUpdates, navigateFromClick } from '../utils/queryNavigation';
-import { getGalleryOrderedChordDefinitions } from '../utils/chordOrdering';
+import { buildSearchWithUpdates, navigateFromClick, preventMiddleMouseDefault } from '../utils/queryNavigation';
 import { readSessionNumber, readSessionString, restoreScrollTopWithRetries, writeSessionNumber, writeSessionString } from '../utils/viewState';
+import { resolveRootFretForShape } from '../utils/chordShapeRendering';
+import {
+  getDefinitionRootVoicings,
+  getRootStringShapeOptions,
+  parseChordDefinitionId,
+} from '../utils/chordVoicing';
+import { buildOrderedChordEntries } from '../utils/chordEntries';
+import { buildRootVoicingDisplayParts, buildRootVoicingPlainLabel } from '../utils/rootVoicingLabel';
+import { resolveGalleryTargetFromSandbox } from '../utils/galleryTargeting';
 
 const SANDBOX_SEARCH_KEY = 'fret-sandbox-search';
 const SANDBOX_LIBRARY_SCROLL_KEY = 'fret-sandbox-library-scroll';
@@ -186,6 +194,7 @@ const SandboxMode: React.FC = () => {
 
   const { history, addHistory, clearHistory } = useHistory<FretPosition[]>('sandboxHistory');
   const [keyConstraint] = useGlobalKeyConstraint('C');
+  const keyPitchClass = useMemo(() => getKeySignatureInfo(keyConstraint).pitchClass, [keyConstraint]);
 
   const [search, setSearch] = useState(() => readSessionString(SANDBOX_SEARCH_KEY, ''));
   const chordLibraryRef = useRef<HTMLDivElement>(null);
@@ -235,18 +244,68 @@ const SandboxMode: React.FC = () => {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get('tab')?.toLowerCase();
       if (tab === 'sandbox') {
+        const chordId = params.get('chordId');
         const quality = params.get('quality');
         const rootString = params.get('rootString');
+        const rootVoicing = params.get('rootVoicing');
+        const shapeIndex = params.get('shapeIndex');
         const fretOffset = params.get('fretOffset');
 
-        if (quality && rootString && fretOffset) {
-          const def = CHORD_DICTIONARY.find(c => c.quality === quality);
-          if (def) {
-            const shape = def.shapes.find((candidate) => candidate.rootString === parseInt(rootString, 10));
-            if (shape) {
-              setChordShape(def, shape, parseInt(fretOffset, 10));
+        const parsedChordId = parseChordDefinitionId(chordId);
+        let definition = parsedChordId
+          ? CHORD_DICTIONARY[parsedChordId.dictionaryIndex]
+          : undefined;
+
+        if (definition && definition.quality !== parsedChordId?.quality) {
+          definition = undefined;
+        }
+
+        if (!definition && quality) {
+          definition = CHORD_DICTIONARY.find((candidate) => candidate.quality === quality);
+        }
+
+        if (definition) {
+          const parsedRootString = Number.parseInt(rootString ?? '', 10);
+          const parsedShapeIndex = Number.parseInt(shapeIndex ?? '', 10);
+          const parsedFretOffset = Number.parseInt(fretOffset ?? '', 10);
+
+          const hasRootString = Number.isFinite(parsedRootString);
+          const hasShapeIndex = Number.isFinite(parsedShapeIndex);
+          const hasFretOffset = Number.isFinite(parsedFretOffset);
+
+          let shape = hasShapeIndex
+            ? definition.shapes[parsedShapeIndex]
+            : undefined;
+
+          if (shape && hasRootString && shape.rootString !== parsedRootString) {
+            shape = undefined;
+          }
+
+          if (!shape && hasRootString && rootVoicing) {
+            shape = getRootStringShapeOptions(definition, parsedRootString)
+              .find((option) => option.rootVoicing === rootVoicing)
+              ?.shape;
+          }
+
+          if (!shape && hasRootString) {
+            shape = definition.shapes.find((candidate) => candidate.rootString === parsedRootString);
+          }
+
+          if (!shape && rootVoicing) {
+            const voicingInfo = getDefinitionRootVoicings(definition).find(
+              (candidate) => candidate.rootVoicing === rootVoicing,
+            );
+            shape = voicingInfo ? definition.shapes[voicingInfo.shapeIndex] : undefined;
+          }
+
+          if (shape) {
+            if (hasFretOffset) {
+              setChordShape(definition, shape, parsedFretOffset);
+            } else {
+              setChordShape(definition, shape);
             }
           }
+
           // Clear parameters so it doesn't get sticky if user navigates tabs
           window.history.replaceState({}, '', '?tab=sandbox');
         }
@@ -258,7 +317,17 @@ const SandboxMode: React.FC = () => {
     return () => window.removeEventListener('popstate', handleUrlState);
   }, [setChordShape]);
 
-  const orderedChordDefinitions = useMemo(() => getGalleryOrderedChordDefinitions(CHORD_DICTIONARY), []);
+  const orderedChordEntries = useMemo(() => buildOrderedChordEntries(CHORD_DICTIONARY), []);
+
+  const renderRootVoicingLabel = (rootString: number, rootVoicing: string) => {
+    const parts = buildRootVoicingDisplayParts(rootString, rootVoicing);
+    return (
+      <>
+        {parts.baseLabel}
+        {parts.voicingLabel ? <span className="ml-1 text-[9px] align-baseline font-extrabold">{parts.voicingLabel}</span> : null}
+      </>
+    );
+  };
 
   const copyToClipboard = async (text: string, target: 'full' | 'shape') => {
     try {
@@ -282,11 +351,11 @@ const SandboxMode: React.FC = () => {
   const filteredChords = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) {
-      return orderedChordDefinitions;
+      return orderedChordEntries;
     }
 
-    return orderedChordDefinitions.filter((chord) => chord.quality.toLowerCase().includes(query));
-  }, [orderedChordDefinitions, search]);
+    return orderedChordEntries.filter(({ definition }) => definition.quality.toLowerCase().includes(query));
+  }, [orderedChordEntries, search]);
 
   const handleChordLibraryScroll = (event: React.UIEvent<HTMLDivElement>) => {
     writeSessionNumber(SANDBOX_LIBRARY_SCROLL_KEY, event.currentTarget.scrollTop);
@@ -340,8 +409,35 @@ const SandboxMode: React.FC = () => {
     })
     .sort((a, b) => a.pitch - b.pitch);
 
+  const openSelectedChordInGallery = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const chord = analyzedChords[selectedChordIndex];
+    if (!chord) {
+      return;
+    }
+
+    const namePart = chord.name.split('/')[0].trim();
+    const match = namePart.match(/^([A-G][b#]?)(.*)$/);
+    if (!match) {
+      return;
+    }
+
+    const key = match[1];
+    const galleryQuality = match[2].trim();
+
+    const galleryTarget = resolveGalleryTargetFromSandbox(orderedChordEntries, galleryQuality, clickedFrets);
+
+    const gallerySearch = buildSearchWithUpdates({
+      tab: 'gallery',
+      key,
+      scrollTo: galleryTarget.quality,
+      scrollToId: galleryTarget.chordId ?? null,
+    });
+
+    navigateFromClick(event, gallerySearch);
+  };
+
   return (
-    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-white text-slate-900 font-sans select-none">
+    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-white text-slate-900 font-sans">
       
       {/* SIDEBAR NAVIGATION */}
       <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-r border-slate-200 flex flex-col p-6 gap-8 shrink-0">
@@ -381,11 +477,48 @@ const SandboxMode: React.FC = () => {
             onScroll={handleChordLibraryScroll}
             className="h-[300px] overflow-y-auto border border-slate-200 bg-white rounded flex flex-col"
           >
-            {filteredChords.map(def => (
-               <div key={def.quality} className="border-b border-slate-100 last:border-0 p-2">
-                 <div className="font-bold text-sm mb-1">{def.quality}</div>
-                 <div className="flex gap-1 justify-between">{[5,4,3].map((strIdx) => { const shape = def.shapes.find((candidate) => candidate.rootString === strIdx); if (shape) { return (<button key={strIdx} onClick={() => { const newPositions = setChordShape(def, shape); addHistory(`${def.quality} (Str ${shape.rootString + 1})`, newPositions); }} className="flex-1 text-[10px] bg-slate-100 hover:bg-blue-100 text-slate-700 px-1 py-1 rounded text-center whitespace-nowrap">{STRING_NAMES[shape.rootString] || `Str ${shape.rootString + 1}`}</button>); } else { return (<button key={strIdx} disabled title="none found" className="flex-1 text-[10px] bg-slate-50 text-slate-300 px-1 py-1 rounded border border-slate-100 cursor-not-allowed text-center whitespace-nowrap">{STRING_NAMES[strIdx] || `Str ${strIdx + 1}`}</button>); } })}</div>
-               </div>
+            {filteredChords.map(({ definition, chordId }) => (
+              <div key={chordId} className="border-b border-slate-100 last:border-0 p-2">
+                <div className="font-bold text-sm mb-1">{definition.quality}</div>
+                <div className="flex gap-1 justify-between">
+                  {[5, 4, 3].map((rootString) => {
+                    const rootStringOptions = getRootStringShapeOptions(definition, rootString);
+
+                    if (rootStringOptions.length === 0) {
+                      return (
+                        <button
+                          key={`${chordId}-${rootString}`}
+                          disabled
+                          title="none found"
+                          className="flex-1 text-[10px] bg-slate-50 text-slate-300 px-1 py-1 rounded border border-slate-100 cursor-not-allowed text-center whitespace-nowrap"
+                        >
+                          {STRING_NAMES[rootString] || `Str ${rootString + 1}`}
+                        </button>
+                      );
+                    }
+
+                    return (
+                      <div key={`${chordId}-${rootString}`} className="flex-1 flex flex-col gap-1">
+                        {rootStringOptions.map((option) => (
+                          <button
+                            key={`${chordId}-${rootString}-${option.rootVoicing}-${option.shapeIndex}`}
+                            onClick={() => {
+                              const pinnedRootFret = resolveRootFretForShape(keyPitchClass, option.shape);
+                              const newPositions = setChordShape(definition, option.shape, pinnedRootFret);
+                              const rootLabel = buildRootVoicingPlainLabel(option.rootString, option.rootVoicing);
+                              addHistory(`${definition.quality} (${rootLabel})`, newPositions);
+                            }}
+                            title={`Pin to key ${keyConstraint}: ${option.rootVoicing}`}
+                            className="w-full text-[10px] bg-slate-100 hover:bg-blue-100 text-slate-700 px-1 py-1 rounded text-center whitespace-nowrap"
+                          >
+                            {renderRootVoicingLabel(option.rootString, option.rootVoicing)}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             ))}
           </div>
 
@@ -451,24 +584,9 @@ const SandboxMode: React.FC = () => {
                       Save Chord
                     </button>
                     <button 
-                      onClick={(event) => {
-                        const chord = analyzedChords[selectedChordIndex];
-                        if (!chord) return;
-                        const namePart = chord.name.split('/')[0].trim();
-                        const match = namePart.match(/^([A-G][b#]?)(.*)$/);
-                        if (!match) return;
-
-                        const key = match[1];
-                        const originalQuality = match[2].trim();
-                        const galleryQuality = originalQuality;
-
-                        const gallerySearch = buildSearchWithUpdates({
-                          tab: 'gallery',
-                          key,
-                          scrollTo: galleryQuality,
-                        });
-                        navigateFromClick(event, gallerySearch);
-                      }}
+                      onClick={openSelectedChordInGallery}
+                      onAuxClick={openSelectedChordInGallery}
+                      onMouseDown={preventMiddleMouseDefault}
                       className="text-[10px] px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded uppercase tracking-widest transition"
                     >
                       See In Gallery

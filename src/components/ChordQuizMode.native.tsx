@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { QUIZ_ROOT_STRING_OPTIONS, useChordQuiz } from '../hooks/useChordQuiz';
-import { getIntervalColor, getIntervalHexColor, getNoteNameFromPitchClass, STRING_NAMES } from '../utils/musicTheory';
+import { getIntervalColor, getIntervalHexColor, getNoteNameFromPitchClass } from '../utils/musicTheory';
 import { Fretboard, type FretMarker } from './Fretboard';
 import SheetMusic from './SheetMusic';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
 import { SheetFretSplit } from './SheetFretSplit.native';
+import { buildRootVoicingDisplayParts } from '../utils/rootVoicingLabel';
 
 const ChordQuizMode: React.FC = () => {
   const {
@@ -18,9 +19,15 @@ const ChordQuizMode: React.FC = () => {
     setInputQuality,
     inputShape,
     setInputShape,
+    inputVoicing,
+    setInputVoicing,
     enabledRootStrings,
     rootStringConstraintLabel,
     toggleRootStringConstraint,
+    showRootHint,
+    setShowRootHint,
+    showVoicingHint,
+    setShowVoicingHint,
     generateQuiz,
     submitGuess,
   } = useChordQuiz();
@@ -50,6 +57,8 @@ const ChordQuizMode: React.FC = () => {
         label: offsetDef.interval || '1',
       }))
     : [];
+
+  const revealVoicingParts = buildRootVoicingDisplayParts(quizData.rootString, quizData.rootVoicing);
 
   return (
     <View style={styles.screen}>
@@ -105,7 +114,11 @@ const ChordQuizMode: React.FC = () => {
                   {getNoteNameFromPitchClass(quizData.rootPitchClass, quizData.useFlats)} {gameState === 'REVEALED' ? quizData.quality : '—'}
                 </Text>
                 <Text style={styles.revealSubtitle}>
-                  {gameState === 'REVEALED' ? (STRING_NAMES[quizData.rootString] || `String ${quizData.rootString + 1}`) : 'String ?'} Shape
+                  {gameState === 'REVEALED' ? 'Exact Reveal' : 'Shape / Voicing'}
+                </Text>
+                <Text style={styles.revealVoicing}>
+                  {gameState === 'REVEALED' ? `Shape: ${revealVoicingParts.baseLabel} | Voicing: ` : 'Shape: ? | Voicing: ?'}
+                  {gameState === 'REVEALED' ? <Text style={styles.revealVoicingToken}>{quizData.rootVoicing}</Text> : null}
                 </Text>
               </View>
 
@@ -166,7 +179,17 @@ const ChordQuizMode: React.FC = () => {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Root Note</Text>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>Root Note</Text>
+                  <Pressable
+                    onPress={() => setShowRootHint((prev) => !prev)}
+                    style={[styles.hintToggle, showRootHint ? styles.hintToggleActive : null]}
+                  >
+                    <Text style={[styles.hintToggleText, showRootHint ? styles.hintToggleTextActive : null]}>
+                      Hint: {showRootHint ? 'On' : 'Off'}
+                    </Text>
+                  </Pressable>
+                </View>
                 <TextInput
                   value={inputRoot}
                   onChangeText={setInputRoot}
@@ -229,6 +252,29 @@ const ChordQuizMode: React.FC = () => {
                     <Text style={styles.shapeButtonText}>Any</Text>
                   </Pressable>
                 </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>Root Voicing</Text>
+                  <Pressable
+                    onPress={() => setShowVoicingHint((prev) => !prev)}
+                    style={[styles.hintToggle, showVoicingHint ? styles.hintToggleActive : null]}
+                  >
+                    <Text style={[styles.hintToggleText, showVoicingHint ? styles.hintToggleTextActive : null]}>
+                      Hint: {showVoicingHint ? 'On' : 'Off'}
+                    </Text>
+                  </Pressable>
+                </View>
+                <TextInput
+                  value={inputVoicing}
+                  onChangeText={setInputVoicing}
+                  placeholder="E, G, C, A, D"
+                  style={[styles.input, gameState === 'REVEALED' ? styles.inputReadonly : null]}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  editable={gameState === 'PLAYING'}
+                />
               </View>
 
               <Pressable
@@ -384,6 +430,17 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontWeight: '700',
   },
+  revealVoicing: {
+    marginTop: 2,
+    fontSize: 11,
+    color: '#1d4ed8',
+    fontWeight: '700',
+  },
+  revealVoicingToken: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#1e40af',
+  },
   menuBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(2, 6, 23, 0.38)',
@@ -462,12 +519,40 @@ const styles = StyleSheet.create({
   inputGroup: {
     gap: 6,
   },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
   label: {
     fontSize: 10,
     color: '#64748b',
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
+  },
+  hintToggle: {
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 999,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  hintToggleActive: {
+    borderColor: '#059669',
+    backgroundColor: '#059669',
+  },
+  hintToggleText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#475569',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  hintToggleTextActive: {
+    color: '#ffffff',
   },
   input: {
     borderWidth: 1,

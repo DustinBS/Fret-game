@@ -3,12 +3,15 @@ import { CHORD_DICTIONARY, type ChordShape } from '../utils/chordLibrary';
 import { getKeySignatureInfo, keySignatureUsesFlats, KEY_CONSTRAINT_OPTIONS, TUNING, NOTES_FLAT, NOTES_SHARP } from '../utils/musicTheory';
 import { CHORD_QUALITY_DIATONIC_MAP, DIATONIC_INTERVALS } from '../utils/diatonic';
 import { readSessionJson, writeSessionJson } from '../utils/viewState';
+import { buildChordDefinitionId, getShapeRootVoicing } from '../utils/chordVoicing';
+import { getRootVoicingArchetype } from '../utils/rootVoicingLabel';
 
 type QuizState = 'PLAYING' | 'REVEALED';
 
 interface QuizData {
   rootPitchClass: number; // 0-11
   quality: string;
+  rootVoicing: string;
   shape: ChordShape;
   rootString: number;
   rootFret: number;
@@ -25,6 +28,7 @@ const MAX_RECENT_QUIZ_KEYS = 80;
 interface QuizCandidate {
   key: string;
   quality: string;
+  rootVoicing: string;
   shape: ChordShape;
   rootPitchClass: number;
 }
@@ -36,9 +40,11 @@ interface QuizPersistedState {
   inputRoot: string;
   inputQuality: string;
   inputShape: string;
+  inputVoicing: string;
   enabledRootStrings: QuizRootString[];
   keyConstraint: string;
   showRootHint: boolean;
+  showVoicingHint: boolean;
   recentQuizKeys: string[];
   onlyDiatonicChords: boolean;
 }
@@ -68,6 +74,7 @@ function normalizeQuizData(value: unknown): QuizData | null {
   if (
     !Number.isFinite(candidate.rootPitchClass) ||
     typeof candidate.quality !== 'string' ||
+    typeof candidate.rootVoicing !== 'string' ||
     !candidate.shape ||
     typeof candidate.shape !== 'object' ||
     !Number.isFinite(candidate.rootString) ||
@@ -81,6 +88,7 @@ function normalizeQuizData(value: unknown): QuizData | null {
   return {
     rootPitchClass: Number(candidate.rootPitchClass),
     quality: candidate.quality,
+    rootVoicing: candidate.rootVoicing,
     shape: candidate.shape as ChordShape,
     rootString: Number(candidate.rootString),
     rootFret: Number(candidate.rootFret),
@@ -154,6 +162,7 @@ export function useChordQuiz() {
   const [inputRoot, setInputRoot] = useState(() => (typeof persistedState.inputRoot === 'string' ? persistedState.inputRoot : ''));
   const [inputQuality, setInputQuality] = useState(() => (typeof persistedState.inputQuality === 'string' ? persistedState.inputQuality : ''));
   const [inputShape, setInputShape] = useState(() => (typeof persistedState.inputShape === 'string' ? persistedState.inputShape : ''));
+  const [inputVoicing, setInputVoicing] = useState(() => (typeof persistedState.inputVoicing === 'string' ? persistedState.inputVoicing : ''));
   const [enabledRootStrings, setEnabledRootStrings] = useState<QuizRootString[]>(() => {
     if (Array.isArray(persistedState.enabledRootStrings)) {
       return normalizeRootStringSelectionFromUnknown(persistedState.enabledRootStrings);
@@ -166,8 +175,13 @@ export function useChordQuiz() {
     return normalizeKeyConstraint(persistedState.keyConstraint);
   });
   const [showRootHint, setShowRootHint] = useState(() => persistedState.showRootHint === true);
+  const [showVoicingHint, setShowVoicingHint] = useState(() => persistedState.showVoicingHint !== false);
   const [recentQuizKeys, setRecentQuizKeys] = useState<string[]>(() => normalizeRecentQuizKeys(persistedState.recentQuizKeys));
   const [onlyDiatonicChords, setOnlyDiatonicChords] = useState(() => persistedState.onlyDiatonicChords === true);
+
+  const definitionIndexMap = useMemo(() => {
+    return new Map(CHORD_DICTIONARY.map((definition, definitionIndex) => [definition, definitionIndex]));
+  }, []);
 
   const activeRootStrings = useMemo(() => getActiveRootStrings(enabledRootStrings), [enabledRootStrings]);
 
@@ -201,13 +215,15 @@ export function useChordQuiz() {
       inputRoot,
       inputQuality,
       inputShape,
+      inputVoicing,
       enabledRootStrings,
       keyConstraint,
       showRootHint,
+      showVoicingHint,
       recentQuizKeys,
       onlyDiatonicChords,
     });
-  }, [streak, gameState, quizData, inputRoot, inputQuality, inputShape, enabledRootStrings, keyConstraint, showRootHint, recentQuizKeys, onlyDiatonicChords]);
+  }, [streak, gameState, quizData, inputRoot, inputQuality, inputShape, inputVoicing, enabledRootStrings, keyConstraint, showRootHint, showVoicingHint, recentQuizKeys, onlyDiatonicChords]);
 
   useEffect(() => {
     if (!quizData || gameState !== 'PLAYING') {
@@ -222,6 +238,19 @@ export function useChordQuiz() {
 
     setInputRoot('');
   }, [showRootHint, quizData, gameState]);
+
+  useEffect(() => {
+    if (!quizData || gameState !== 'PLAYING') {
+      return;
+    }
+
+    if (showVoicingHint) {
+      setInputVoicing(quizData.rootVoicing);
+      return;
+    }
+
+    setInputVoicing('');
+  }, [showVoicingHint, quizData, gameState]);
 
   const generateQuiz = useCallback(() => {
     const allPitchClasses = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
@@ -273,16 +302,22 @@ export function useChordQuiz() {
     };
 
     const constrainedCandidates = effectiveChordDictionary.flatMap((entry) => {
+      const definitionIndex = definitionIndexMap.get(entry) ?? CHORD_DICTIONARY.findIndex((candidate) => candidate === entry);
+      const chordId = buildChordDefinitionId(entry.quality, definitionIndex);
+
       return entry.shapes.flatMap((shape, shapeIndex) => {
         if (!activeRootSet.has(shape.rootString)) {
           return [];
         }
 
+        const rootVoicing = getShapeRootVoicing(entry, shapeIndex).rootVoicing;
+
         return allowedRoots
           .filter((rootPitchClass) => isDiatonicCandidate(entry.quality, rootPitchClass))
           .map((rootPitchClass) => ({
-            key: `${entry.quality}|${shape.rootString}|${shapeIndex}|${rootPitchClass}`,
+            key: `${chordId}|${rootVoicing}|${shape.rootString}|${shapeIndex}|${rootPitchClass}`,
             quality: entry.quality,
+            rootVoicing,
             shape,
             rootPitchClass,
           }));
@@ -290,12 +325,18 @@ export function useChordQuiz() {
     });
 
     const fallbackCandidates = effectiveChordDictionary.flatMap((entry) => {
+      const definitionIndex = definitionIndexMap.get(entry) ?? CHORD_DICTIONARY.findIndex((candidate) => candidate === entry);
+      const chordId = buildChordDefinitionId(entry.quality, definitionIndex);
+
       return entry.shapes.flatMap((shape, shapeIndex) => {
+        const rootVoicing = getShapeRootVoicing(entry, shapeIndex).rootVoicing;
+
         return allowedRoots
           .filter((rootPitchClass) => isDiatonicCandidate(entry.quality, rootPitchClass))
           .map((rootPitchClass) => ({
-            key: `${entry.quality}|${shape.rootString}|${shapeIndex}|${rootPitchClass}`,
+            key: `${chordId}|${rootVoicing}|${shape.rootString}|${shapeIndex}|${rootPitchClass}`,
             quality: entry.quality,
+            rootVoicing,
             shape,
             rootPitchClass,
           }));
@@ -313,6 +354,7 @@ export function useChordQuiz() {
 
     const selectedCandidate = candidatePool[Math.floor(Math.random() * candidatePool.length)] as QuizCandidate;
     const quality = selectedCandidate.quality;
+    const rootVoicing = selectedCandidate.rootVoicing;
     const shape = selectedCandidate.shape;
     const targetPitchClass = selectedCandidate.rootPitchClass;
     
@@ -335,6 +377,7 @@ export function useChordQuiz() {
     setQuizData({
       rootPitchClass: targetPitchClass,
       quality,
+      rootVoicing,
       shape: { ...shape, rootString: shape.rootString },
       rootString: shape.rootString,
       rootFret,
@@ -345,13 +388,14 @@ export function useChordQuiz() {
     setInputRoot(showRootHint ? hintedRoot : '');
     setInputQuality('');
     setInputShape('');
+    setInputVoicing(showVoicingHint ? rootVoicing : '');
     setGameState('PLAYING');
 
     setRecentQuizKeys((prev) => {
       const deduped = [selectedCandidate.key, ...prev.filter((key) => key !== selectedCandidate.key)];
       return deduped.slice(0, MAX_RECENT_QUIZ_KEYS);
     });
-  }, [keyConstraint, activeRootStrings, showRootHint, recentQuizKeys, onlyDiatonicChords]);
+  }, [keyConstraint, activeRootStrings, showRootHint, showVoicingHint, recentQuizKeys, onlyDiatonicChords, definitionIndexMap]);
 
   const submitGuess = useCallback(() => {
     if (!quizData || gameState !== 'PLAYING') return false;
@@ -365,7 +409,11 @@ export function useChordQuiz() {
     const matchesDisplayedString = normalizedShape === String(quizData.rootString + 1);
     const isShapeCorrect = normalizedShape === '' || matchesRootStringIndex || matchesDisplayedString;
 
-    const wasCorrect = isRootCorrect && isQualityCorrect && isShapeCorrect;
+    const expectedVoicingArchetype = getRootVoicingArchetype(quizData.rootVoicing);
+    const guessedVoicingArchetype = getRootVoicingArchetype(inputVoicing);
+    const isVoicingCorrect = guessedVoicingArchetype.length > 0 && guessedVoicingArchetype === expectedVoicingArchetype;
+
+    const wasCorrect = isRootCorrect && isQualityCorrect && isShapeCorrect && isVoicingCorrect;
     
     if (wasCorrect) {
       setStreak((s) => s + 1);
@@ -375,7 +423,7 @@ export function useChordQuiz() {
 
     setGameState('REVEALED');
     return wasCorrect;
-  }, [quizData, inputRoot, inputQuality, inputShape, gameState]);
+  }, [quizData, inputRoot, inputQuality, inputShape, inputVoicing, gameState]);
 
   return {
     quizData,
@@ -390,6 +438,8 @@ export function useChordQuiz() {
     setInputQuality,
     inputShape,
     setInputShape,
+    inputVoicing,
+    setInputVoicing,
     enabledRootStrings,
     setEnabledRootStrings,
     rootStringConstraintLabel,
@@ -398,6 +448,8 @@ export function useChordQuiz() {
     setKeyConstraint,
     showRootHint,
     setShowRootHint,
+    showVoicingHint,
+    setShowVoicingHint,
     onlyDiatonicChords,
     setOnlyDiatonicChords,
     generateQuiz,

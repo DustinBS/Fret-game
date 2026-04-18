@@ -1,6 +1,7 @@
 import type { ChordDefinition, ChordShape } from './chordLibrary.types';
 import { TUNING } from './musicTheory';
 import { CHORD_QUALITY_DIATONIC_MAP } from './diatonic';
+import { buildChordDefinitionId, getShapeRootVoicing } from './chordVoicing';
 
 type AccidentalMask = 'bb' | 'b' | 'clean' | '#' | '##';
 
@@ -18,8 +19,11 @@ interface ShapeNoteDescriptor {
 
 export interface VisualArchetypeMember {
   quality: string;
+  definitionIndex: number;
+  chordId: string;
   rootString: number;
   shapeIndex: number;
+  rootVoicing: string;
   impliedVisualKey: string;
   strictVisualKey: string;
   rawIntervalSignature: string;
@@ -163,13 +167,19 @@ function getStringSet(shape: ChordShape): number[] {
   return Array.from(set).sort((a, b) => b - a);
 }
 
-function buildMember(quality: string, shape: ChordShape, shapeIndex: number): VisualArchetypeMember {
+function buildMember(
+  quality: string,
+  definitionIndex: number,
+  chordId: string,
+  rootVoicing: string,
+  shape: ChordShape,
+  shapeIndex: number,
+): VisualArchetypeMember {
   const notes = orderByVisualStack(buildShapeDescriptors(shape, quality));
   const degreeSequence = notes.map((n) => n.degreeClass);
   const accidentalMask = notes.map((n) => n.accidentalMask);
   const canonicalStack = notes.map((n) => n.canonicalRelativeSemitone);
   const stringSet = getStringSet(shape);
-
   const impliedVisualKey = [
     `rs:${shape.rootString}`,
     `ss:${stringSet.join('.')}`,
@@ -181,8 +191,11 @@ function buildMember(quality: string, shape: ChordShape, shapeIndex: number): Vi
 
   return {
     quality,
+    definitionIndex,
+    chordId,
     rootString: shape.rootString,
     shapeIndex,
+    rootVoicing,
     impliedVisualKey,
     strictVisualKey,
     rawIntervalSignature: notes.map((n) => n.interval).join(' '),
@@ -195,9 +208,12 @@ function buildMember(quality: string, shape: ChordShape, shapeIndex: number): Vi
 export function buildVisualArchetypeGroups(chords: ChordDefinition[]): VisualArchetypeGroup[] {
   const grouped = new Map<string, VisualArchetypeGroup>();
 
-  for (const chord of chords) {
+  for (const [definitionIndex, chord] of chords.entries()) {
+    const chordId = buildChordDefinitionId(chord.quality, definitionIndex);
+
     chord.shapes.forEach((shape, shapeIndex) => {
-      const member = buildMember(chord.quality, shape, shapeIndex);
+      const rootVoicing = getShapeRootVoicing(chord, shapeIndex).rootVoicing;
+      const member = buildMember(chord.quality, definitionIndex, chordId, rootVoicing, shape, shapeIndex);
       const existing = grouped.get(member.impliedVisualKey);
 
       if (!existing) {
@@ -225,6 +241,9 @@ export function buildVisualArchetypeGroups(chords: ChordDefinition[]): VisualArc
       members: [...group.members].sort((a, b) => {
         if (a.quality !== b.quality) {
           return a.quality.localeCompare(b.quality);
+        }
+        if (a.definitionIndex !== b.definitionIndex) {
+          return a.definitionIndex - b.definitionIndex;
         }
         return a.shapeIndex - b.shapeIndex;
       }),

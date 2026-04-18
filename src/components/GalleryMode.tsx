@@ -2,10 +2,14 @@ import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from 're
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
 import { getNoteNameFromPitchClass, getKeySignatureInfo, KEY_CONSTRAINT_OPTIONS, keySignatureUsesFlats } from '../utils/musicTheory';
 import { DIATONIC_INTERVALS, CHORD_QUALITY_DIATONIC_MAP } from '../utils/diatonic';
-import { getGalleryOrderedChordDefinitions } from '../utils/chordOrdering';
 import { flashTableRowOverlay, scrollToTargetAndFlash } from '../utils/scrollFeedback';
-import { buildSearchWithUpdates, navigateFromClick } from '../utils/queryNavigation';
+import { buildSearchWithUpdates, navigateFromClick, preventMiddleMouseDefault } from '../utils/queryNavigation';
 import { buildShapeSheetPreview } from '../utils/chordShapeRendering';
+import {
+  buildShapeSelectionStateKey,
+  getRootStringShapeOptions,
+} from '../utils/chordVoicing';
+import { buildOrderedChordEntries, buildQualityDisplayLabelMap } from '../utils/chordEntries';
 import {
   readSessionBoolean,
   readSessionJson,
@@ -22,6 +26,7 @@ const GALLERY_MAIN_SCROLL_KEY = 'fret-gallery-main-scroll';
 const GALLERY_LIST_SCROLL_KEY = 'fret-gallery-list-scroll';
 const GALLERY_SHOW_DIATONIC_KEY = 'fret-gallery-show-diatonic';
 const GALLERY_SELECTED_DIATONIC_KEY = 'fret-gallery-selected-diatonic';
+const GALLERY_SELECTED_VOICING_KEY = 'fret-gallery-selected-voicing';
 
 interface GalleryModeProps {
   keyConstraint: string;
@@ -34,20 +39,37 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
   const [selectedDiatonic, setSelectedDiatonic] = useState<Record<string, string>>(
     () => readSessionJson<Record<string, string>>(GALLERY_SELECTED_DIATONIC_KEY, {}),
   );
+  const [selectedVoicingByRoot, setSelectedVoicingByRoot] = useState<Record<string, string>>(
+    () => readSessionJson<Record<string, string>>(GALLERY_SELECTED_VOICING_KEY, {}),
+  );
   const scrollContainerRef = useRef<HTMLElement>(null);
   const chordListRef = useRef<HTMLDivElement>(null);
 
-  const orderedChordDefs = useMemo(() => getGalleryOrderedChordDefinitions(CHORD_DICTIONARY), []);
+  const orderedChordEntries = useMemo(() => buildOrderedChordEntries(CHORD_DICTIONARY), []);
+  const qualityDisplayLabelMap = useMemo(() => buildQualityDisplayLabelMap(orderedChordEntries), [orderedChordEntries]);
   const rootObj = useMemo(() => getKeySignatureInfo(keyConstraint), [keyConstraint]);
   const notationUsesFlats = useMemo(() => keySignatureUsesFlats(rootObj.renderableKeyName), [rootObj.renderableKeyName]);
   const stringShapes = [5, 4, 3];
 
-  const scrollToQuality = (quality: string) => {
+  const getDisplayQuality = (chordId: string, quality: string): string => {
+    return qualityDisplayLabelMap.get(chordId) ?? quality;
+  };
+
+  const scrollToQuality = (quality: string, chordId?: string) => {
     if (!scrollContainerRef.current) {
       return;
     }
+
     const rows = Array.from(scrollContainerRef.current.querySelectorAll('tr[data-quality]'));
-    const targetRow = rows.find((row) => (row as HTMLElement).dataset.quality === quality);
+    const targetRow = rows.find((row) => {
+      const element = row as HTMLElement;
+      if (chordId) {
+        return element.dataset.chordId === chordId;
+      }
+
+      return element.dataset.quality === quality;
+    });
+
     if (targetRow) {
       scrollToTargetAndFlash({
         container: scrollContainerRef.current,
@@ -64,6 +86,10 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
   useEffect(() => {
     writeSessionJson(GALLERY_SELECTED_DIATONIC_KEY, selectedDiatonic);
   }, [selectedDiatonic]);
+
+  useEffect(() => {
+    writeSessionJson(GALLERY_SELECTED_VOICING_KEY, selectedVoicingByRoot);
+  }, [selectedVoicingByRoot]);
 
   // Gallery uses a large table with sticky cells and VexFlow previews, so scrollHeight can
   // stabilize after first paint. Use retry-based restoration instead of one-shot assignment.
@@ -119,9 +145,11 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
       }
 
       const scrollTo = params.get('scrollTo');
-      if (scrollTo) {
-        scrollToQuality(scrollTo);
+      const scrollToId = params.get('scrollToId');
+      if (scrollTo || scrollToId) {
+        scrollToQuality(scrollTo ?? '', scrollToId ?? undefined);
         params.delete('scrollTo');
+        params.delete('scrollToId');
         window.history.replaceState({}, '', `?${params.toString()}`);
       }
     };
@@ -142,7 +170,7 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-white text-slate-900 font-sans select-none">
+    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-white text-slate-900 font-sans">
       <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-r border-slate-200 flex flex-col p-6 gap-8 shrink-0">
         <div>
           <h1 className="text-2xl font-black tracking-tighter uppercase">
@@ -154,7 +182,7 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
         </div>
 
         <div className="flex items-center justify-between border-t border-slate-200 pt-4">
-          <label className="text-xs font-bold uppercase text-slate-500 tracking-wider cursor-pointer select-none" htmlFor="diatonicToggle">
+          <label className="text-xs font-bold uppercase text-slate-500 tracking-wider cursor-pointer" htmlFor="diatonicToggle">
             Show Available Diatonic Chords
           </label>
           <input
@@ -173,13 +201,13 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
             onScroll={handleChordListScroll}
             className="max-h-[420px] overflow-y-auto border border-slate-200 rounded bg-white p-1 flex flex-col gap-1"
           >
-            {orderedChordDefs.map((def) => (
+            {orderedChordEntries.map(({ definition, chordId }) => (
               <button
-                key={def.quality}
-                onClick={() => scrollToQuality(def.quality)}
+                key={chordId}
+                onClick={() => scrollToQuality(definition.quality, chordId)}
                 className="text-left text-xs font-bold px-2 py-1 rounded hover:bg-blue-50 text-slate-700"
               >
-                {def.quality}
+                {getDisplayQuality(chordId, definition.quality)}
               </button>
             ))}
           </div>
@@ -215,10 +243,10 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {orderedChordDefs.map((def) => {
-                const diatonicOptions = CHORD_QUALITY_DIATONIC_MAP[def.quality] || [];
+              {orderedChordEntries.map(({ definition, chordId }) => {
+                const diatonicOptions = CHORD_QUALITY_DIATONIC_MAP[definition.quality] || [];
                 const hasDiatonic = diatonicOptions.length > 0;
-                const activeDiatonic = selectedDiatonic[def.quality] || diatonicOptions[0];
+                const activeDiatonic = selectedDiatonic[chordId] || diatonicOptions[0];
                 const offsetFromKey = showDiatonic && hasDiatonic && DIATONIC_INTERVALS[activeDiatonic] !== undefined
                   ? DIATONIC_INTERVALS[activeDiatonic]
                   : 0;
@@ -227,12 +255,12 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
                 const actualRootName = getNoteNameFromPitchClass(actualRootPitch, notationUsesFlats);
 
                 return (
-                  <tr key={def.quality} data-quality={def.quality} className="hover:bg-slate-50">
+                  <tr key={chordId} data-quality={definition.quality} data-chord-id={chordId} className="hover:bg-slate-50">
                     <td className="p-4 font-bold text-slate-700 sticky left-0 z-10 shadow-[1px_0_0_rgba(226,232,240,1)] bg-white align-middle">
                       <div className="flex flex-col gap-1">
                         <span className="whitespace-nowrap">
                           {showDiatonic && hasDiatonic ? <span className="text-blue-600 mr-1">{actualRootName}</span> : null}
-                          {def.quality}
+                          {getDisplayQuality(chordId, definition.quality)}
                         </span>
 
                         {showDiatonic && (
@@ -241,7 +269,7 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
                               {diatonicOptions.map((d) => (
                                 <button
                                   key={d}
-                                  onClick={() => setSelectedDiatonic((prev) => ({ ...prev, [def.quality]: d }))}
+                                  onClick={() => setSelectedDiatonic((prev) => ({ ...prev, [chordId]: d }))}
                                   className={`text-[10px] font-bold tracking-widest px-2 py-1 rounded border transition-colors ${activeDiatonic === d ? 'bg-blue-600 border-blue-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-blue-50'}`}
                                 >
                                   {d}
@@ -258,18 +286,24 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
                         )}
                       </div>
                     </td>
-                    {stringShapes.map((str) => {
-                      const shape = def.shapes.find((s) => s.rootString === str);
-                      if (!shape) {
-                        return <td key={str} className="p-4 text-center text-slate-300">-</td>;
+                    {stringShapes.map((rootString) => {
+                      const rootStringOptions = getRootStringShapeOptions(definition, rootString);
+                      if (rootStringOptions.length === 0) {
+                        return <td key={rootString} className="p-4 text-center text-slate-300">-</td>;
                       }
 
-                      const preview = buildShapeSheetPreview(shape, actualRootPitch, useGalleryColors);
+                      const voicingSelectionKey = buildShapeSelectionStateKey(chordId, rootString);
+                      const selectedRootVoicing = selectedVoicingByRoot[voicingSelectionKey];
+                      const activeOption = rootStringOptions.find((option) => option.rootVoicing === selectedRootVoicing) ?? rootStringOptions[0];
+                      const preview = buildShapeSheetPreview(activeOption.shape, actualRootPitch, useGalleryColors);
 
                       const sandboxSearch = buildSearchWithUpdates({
                         tab: 'sandbox',
-                        quality: def.quality,
-                        rootString: str.toString(),
+                        chordId,
+                        quality: definition.quality,
+                        rootString: rootString.toString(),
+                        rootVoicing: activeOption.rootVoicing,
+                        shapeIndex: activeOption.shapeIndex.toString(),
                         fretOffset: preview.rootFret.toString(),
                         key: null,
                       });
@@ -279,12 +313,38 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
                       };
 
                       return (
-                        <td key={str} className="p-2 text-center align-middle transform scale-90 origin-center">
+                        <td key={rootString} className="p-2 text-center align-middle transform scale-90 origin-center">
+                          {rootStringOptions.length > 1 ? (
+                            <div className="mb-2 flex flex-wrap justify-center gap-1">
+                              {rootStringOptions.map((option) => (
+                                <button
+                                  key={`${chordId}-${rootString}-${option.rootVoicing}-${option.shapeIndex}`}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedVoicingByRoot((prev) => ({
+                                      ...prev,
+                                      [voicingSelectionKey]: option.rootVoicing,
+                                    }));
+                                  }}
+                                  className={`px-2 py-1 rounded border text-[10px] font-bold tracking-wider ${activeOption.rootVoicing === option.rootVoicing ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                  {option.rootVoicing}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="mb-2 text-[10px] font-bold tracking-wider text-slate-500 uppercase">
+                              {activeOption.rootVoicing}
+                            </div>
+                          )}
+
                           <button
                             type="button"
                             onClick={handleCellClick}
+                            onAuxClick={handleCellClick}
+                            onMouseDown={preventMiddleMouseDefault}
                             className="w-full cursor-pointer border border-transparent hover:border-blue-300 hover:bg-blue-50/50 hover:shadow-sm rounded-lg p-2 transition-all"
-                            title={`Open ${actualRootName} ${def.quality} (String ${str + 1}) in Sandbox`}
+                            title={`Open ${actualRootName} ${definition.quality} (${activeOption.rootVoicing}) on string ${rootString + 1} in Sandbox`}
                           >
                             <SheetMusic
                               notes={preview.notes}

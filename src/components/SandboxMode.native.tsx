@@ -8,19 +8,19 @@ import { getIntervalColor, getIntervalHexColor, getKeySignatureInfo, getNoteName
 import { readSessionString, writeSessionString } from '../utils/viewState';
 import type { GalleryJumpRequest, ShapePresetRequest } from '../types/nativeNavigation';
 import { SheetFretSplit } from './SheetFretSplit.native';
+import { resolveRootFretForShape } from '../utils/chordShapeRendering';
+import {
+  getDefinitionRootVoicings,
+  getRootStringShapeOptions,
+  parseChordDefinitionId,
+} from '../utils/chordVoicing';
+import { buildOrderedChordEntries } from '../utils/chordEntries';
+import { buildRootVoicingDisplayParts } from '../utils/rootVoicingLabel';
+import { resolveGalleryTargetFromSandbox } from '../utils/galleryTargeting';
 
 const SANDBOX_SEARCH_KEY = 'fret-sandbox-search-native';
 
 const LIBRARY_ROOT_STRINGS = [5, 4, 3] as const;
-
-const STRING_NAMES: Record<number, string> = {
-  5: 'Str 6E',
-  4: 'Str 5A',
-  3: 'Str 4D',
-  2: 'Str 3G',
-  1: 'Str 2B',
-  0: 'Str 1e',
-};
 
 interface SandboxModeProps {
   presetRequest?: { id: number; preset: ShapePresetRequest } | null;
@@ -45,6 +45,7 @@ const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery,
   const [search, setSearch] = useState(() => readSessionString(SANDBOX_SEARCH_KEY, ''));
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const keyPitchClass = useMemo(() => getKeySignatureInfo(keyConstraint).pitchClass, [keyConstraint]);
 
   useEffect(() => {
     writeSessionString(SANDBOX_SEARCH_KEY, search);
@@ -56,27 +57,80 @@ const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery,
     }
 
     const preset = presetRequest.preset;
-    const def = CHORD_DICTIONARY.find((candidate) => candidate.quality === preset.quality);
-    if (!def) {
+    const parsedChordId = parseChordDefinitionId(preset.chordId ?? null);
+    let definition = parsedChordId
+      ? CHORD_DICTIONARY[parsedChordId.dictionaryIndex]
+      : undefined;
+
+    if (definition && definition.quality !== parsedChordId?.quality) {
+      definition = undefined;
+    }
+
+    if (!definition) {
+      definition = CHORD_DICTIONARY.find((candidate) => candidate.quality === preset.quality);
+    }
+
+    if (!definition) {
       return;
     }
 
-    const shape = def.shapes.find((candidate) => candidate.rootString === preset.rootString);
+    const parsedShapeIndex = Number(preset.shapeIndex);
+    const hasRootString = Number.isFinite(preset.rootString);
+    const hasShapeIndex = Number.isFinite(parsedShapeIndex);
+
+    let shape = hasShapeIndex
+      ? definition.shapes[parsedShapeIndex]
+      : undefined;
+
+    if (shape && hasRootString && shape.rootString !== preset.rootString) {
+      shape = undefined;
+    }
+
+    if (!shape && hasRootString && preset.rootVoicing) {
+      shape = getRootStringShapeOptions(definition, preset.rootString)
+        .find((option) => option.rootVoicing === preset.rootVoicing)
+        ?.shape;
+    }
+
+    if (!shape && hasRootString) {
+      shape = definition.shapes.find((candidate) => candidate.rootString === preset.rootString);
+    }
+
+    if (!shape && preset.rootVoicing) {
+      const voicingInfo = getDefinitionRootVoicings(definition).find(
+        (candidate) => candidate.rootVoicing === preset.rootVoicing,
+      );
+      shape = voicingInfo ? definition.shapes[voicingInfo.shapeIndex] : undefined;
+    }
+
     if (!shape) {
       return;
     }
 
-    setChordShape(def, shape, preset.fretOffset);
+    setChordShape(definition, shape, preset.fretOffset);
   }, [presetRequest, setChordShape]);
+
+  const chordEntries = useMemo(() => buildOrderedChordEntries(CHORD_DICTIONARY), []);
+
+  const renderRootVoicingLabel = (rootString: number, rootVoicing: string) => {
+    const parts = buildRootVoicingDisplayParts(rootString, rootVoicing);
+
+    return (
+      <Text style={styles.shapeButtonText}>
+        {parts.baseLabel}
+        {parts.voicingLabel ? <Text style={styles.shapeButtonVoicing}>{` ${parts.voicingLabel}`}</Text> : null}
+      </Text>
+    );
+  };
 
   const filteredChords = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) {
-      return CHORD_DICTIONARY;
+      return chordEntries;
     }
 
-    return CHORD_DICTIONARY.filter((definition) => definition.quality.toLowerCase().includes(query));
-  }, [search]);
+    return chordEntries.filter(({ definition }) => definition.quality.toLowerCase().includes(query));
+  }, [chordEntries, search]);
 
   const markers: FretMarker[] = clickedFrets.map((position) => ({
     stringIndex: position.stringIndex,
@@ -138,9 +192,13 @@ const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery,
       return;
     }
 
+    const quality = match[2].trim();
+    const galleryTarget = resolveGalleryTargetFromSandbox(chordEntries, quality, clickedFrets);
+
     onOpenGallery({
       key: match[1],
-      quality: match[2].trim(),
+      quality: galleryTarget.quality,
+      chordId: galleryTarget.chordId,
     });
   };
 
@@ -283,31 +341,39 @@ const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery,
             />
 
             <ScrollView style={styles.modalList} contentContainerStyle={styles.modalListContent}>
-              {filteredChords.map((definition) => (
-                <View key={definition.quality} style={styles.modalCard}>
+              {filteredChords.map(({ definition, chordId }) => (
+                <View key={chordId} style={styles.modalCard}>
                   <Text style={styles.modalCardTitle}>{definition.quality}</Text>
                   <View style={styles.modalCardActions}>
                     {LIBRARY_ROOT_STRINGS.map((rootString) => {
-                      const shape = definition.shapes.find((candidate) => candidate.rootString === rootString);
-                      if (!shape) {
+                      const rootStringOptions = getRootStringShapeOptions(definition, rootString);
+
+                      if (rootStringOptions.length === 0) {
                         return (
-                          <View key={`${definition.quality}-${rootString}`} style={[styles.shapeButton, styles.shapeButtonDisabled]}>
-                            <Text style={styles.shapeButtonDisabledText}>N/A</Text>
+                          <View key={`${chordId}-${rootString}`} style={styles.shapeColumn}>
+                            <View style={[styles.shapeButton, styles.shapeButtonDisabled]}>
+                              <Text style={styles.shapeButtonDisabledText}>N/A</Text>
+                            </View>
                           </View>
                         );
                       }
 
                       return (
-                        <Pressable
-                          key={`${definition.quality}-${rootString}`}
-                          style={styles.shapeButton}
-                          onPress={() => {
-                            setChordShape(definition, shape);
-                            setIsLibraryOpen(false);
-                          }}
-                        >
-                          <Text style={styles.shapeButtonText}>{STRING_NAMES[rootString]}</Text>
-                        </Pressable>
+                        <View key={`${chordId}-${rootString}`} style={styles.shapeColumn}>
+                          {rootStringOptions.map((option) => (
+                            <Pressable
+                              key={`${chordId}-${rootString}-${option.rootVoicing}-${option.shapeIndex}`}
+                              style={styles.shapeButton}
+                              onPress={() => {
+                                const pinnedRootFret = resolveRootFretForShape(keyPitchClass, option.shape);
+                                setChordShape(definition, option.shape, pinnedRootFret);
+                                setIsLibraryOpen(false);
+                              }}
+                            >
+                              {renderRootVoicingLabel(rootString, option.rootVoicing)}
+                            </Pressable>
+                          ))}
+                        </View>
                       );
                     })}
                   </View>
@@ -592,8 +658,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
   },
-  shapeButton: {
+  shapeColumn: {
     flex: 1,
+    gap: 6,
+  },
+  shapeButton: {
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#cbd5e1',
@@ -611,6 +680,11 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.4,
+  },
+  shapeButtonVoicing: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#0f172a',
   },
   shapeButtonDisabledText: {
     color: '#94a3b8',

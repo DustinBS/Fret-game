@@ -7,13 +7,13 @@ import {
   getNoteNameFromPitchClass,
   keySignatureUsesFlats,
   KEY_CONSTRAINT_OPTIONS,
-  STRING_NAMES,
 } from '../utils/musicTheory';
 import { Fretboard } from './Fretboard';
 import SheetMusic from './SheetMusic';
 import { CHORD_DICTIONARY, type ChordShape } from '../utils/chordLibrary';
-import { getCorrectMissHistoryLabelClass, useHistory, HistoryPanel } from './History';
+import { getCorrectMissHistoryLabelClass, type HistoryItem, useHistory, HistoryPanel } from './History';
 import { LegendPanel } from './LegendPanel';
+import { buildRootVoicingDisplayParts } from '../utils/rootVoicingLabel';
 
 const SHAPE_INPUT_TO_ROOT_STRING: Record<string, string> = {
   '6': '5',
@@ -53,6 +53,7 @@ interface QuizHistoryState {
   quizData: {
     rootPitchClass: number;
     quality: string;
+    rootVoicing: string;
     shape: ChordShape;
     rootString: number;
     rootFret: number;
@@ -63,9 +64,11 @@ interface QuizHistoryState {
   inputRoot: string;
   inputQuality: string;
   inputShape: string;
+  inputVoicing: string;
   enabledRootStrings: QuizRootString[];
   keyConstraint: string;
   showRootHint: boolean;
+  showVoicingHint: boolean;
   streak: number;
   wasCorrect: boolean;
 }
@@ -83,6 +86,7 @@ function isQuizHistoryState(value: unknown): value is QuizHistoryState {
   const quizData = candidate.quizData as Partial<QuizHistoryState['quizData']>;
   return Number.isFinite(quizData.rootPitchClass)
     && typeof quizData.quality === 'string'
+    && typeof quizData.rootVoicing === 'string'
     && typeof quizData.rootString === 'number'
     && typeof quizData.rootFret === 'number'
     && Array.isArray(quizData.activePitches)
@@ -91,9 +95,11 @@ function isQuizHistoryState(value: unknown): value is QuizHistoryState {
     && typeof candidate.inputRoot === 'string'
     && typeof candidate.inputQuality === 'string'
     && typeof candidate.inputShape === 'string'
+    && typeof candidate.inputVoicing === 'string'
     && Array.isArray(candidate.enabledRootStrings)
     && typeof candidate.keyConstraint === 'string'
     && typeof candidate.showRootHint === 'boolean'
+    && typeof candidate.showVoicingHint === 'boolean'
     && Number.isFinite(candidate.streak)
     && typeof candidate.wasCorrect === 'boolean';
 }
@@ -111,6 +117,8 @@ export default function ChordQuizMode() {
     setInputQuality,
     inputShape,
     setInputShape,
+    inputVoicing,
+    setInputVoicing,
     setStreak,
     enabledRootStrings,
     setEnabledRootStrings,
@@ -120,6 +128,8 @@ export default function ChordQuizMode() {
     setKeyConstraint,
     showRootHint,
     setShowRootHint,
+    showVoicingHint,
+    setShowVoicingHint,
     onlyDiatonicChords,
     setOnlyDiatonicChords,
     generateQuiz,
@@ -162,16 +172,18 @@ export default function ChordQuizMode() {
 
     if (quizData && gameState === 'PLAYING') {
       const actualName = `${getNoteNameFromPitchClass(quizData.rootPitchClass, quizData.useFlats)} ${quizData.quality}`;
-      const shapeName = `(Str ${quizData.rootString + 1})`;
-      addHistory(`${actualName} ${shapeName} - ${wasCorrect ? '(Correct)' : '(Miss)'}`, {
+      const voicingLabel = buildRootVoicingDisplayParts(quizData.rootString, quizData.rootVoicing).plainLabel;
+      addHistory(`${actualName} (${voicingLabel})`, {
         quizData,
         gameState: 'REVEALED',
         inputRoot,
         inputQuality,
         inputShape,
+        inputVoicing,
         enabledRootStrings,
         keyConstraint,
         showRootHint,
+        showVoicingHint,
         streak: wasCorrect ? streak + 1 : 0,
         wasCorrect,
       });
@@ -183,9 +195,11 @@ export default function ChordQuizMode() {
     inputRoot,
     inputQuality,
     inputShape,
+    inputVoicing,
     enabledRootStrings,
     keyConstraint,
     showRootHint,
+    showVoicingHint,
     streak,
     addHistory,
   ]);
@@ -255,9 +269,28 @@ export default function ChordQuizMode() {
   const nextQuizButtonClass = lastSubmissionResult === false
     ? 'bg-red-600 hover:bg-red-700'
     : 'bg-emerald-600 hover:bg-emerald-700';
+  const revealShapeParts = buildRootVoicingDisplayParts(quizData.rootString, quizData.rootVoicing);
+
+  const renderQuizHistoryLabel = (item: HistoryItem<QuizHistoryState>) => {
+    if (!isQuizHistoryState(item.state)) {
+      return item.label;
+    }
+
+    const { quizData: historyQuizData } = item.state;
+    const actualName = `${getNoteNameFromPitchClass(historyQuizData.rootPitchClass, historyQuizData.useFlats)} ${historyQuizData.quality}`;
+    const voicingParts = buildRootVoicingDisplayParts(historyQuizData.rootString, historyQuizData.rootVoicing);
+
+    return (
+      <>
+        {actualName} ({voicingParts.baseLabel}
+        {historyQuizData.rootVoicing ? <span className="ml-1 text-[10px] font-extrabold align-baseline">{historyQuizData.rootVoicing}</span> : null}
+        )
+      </>
+    );
+  };
 
   return (
-    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-white text-slate-900 font-sans select-none">
+    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-white text-slate-900 font-sans">
       
       {/* SIDEBAR NAVIGATION */}
       <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-r border-slate-200 flex flex-col p-6 gap-8 shrink-0">
@@ -357,6 +390,35 @@ export default function ChordQuizMode() {
               </datalist>
             </div>
 
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label htmlFor="quiz-root-voicing" className="text-xs font-bold uppercase text-slate-500 tracking-wider block">Root Voicing</label>
+                <button
+                  type="button"
+                  onClick={() => setShowVoicingHint((prev) => !prev)}
+                  className={`text-[11px] font-bold uppercase tracking-wider border rounded px-2 py-1 transition-colors ${showVoicingHint ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'}`}
+                >
+                  Hint: {showVoicingHint ? 'On' : 'Off'}
+                </button>
+              </div>
+              <input
+                id="quiz-root-voicing"
+                type="text"
+                list="quiz-root-voicing-options"
+                className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none"
+                placeholder="e.g. E, G, C, A, D"
+                value={inputVoicing}
+                onChange={(event) => setInputVoicing(event.target.value)}
+              />
+              <datalist id="quiz-root-voicing-options">
+                <option value="C" />
+                <option value="A" />
+                <option value="G" />
+                <option value="E" />
+                <option value="D" />
+              </datalist>
+            </div>
+
             {gameState === 'PLAYING' ? (
               <button 
                 type="button"
@@ -407,7 +469,12 @@ export default function ChordQuizMode() {
               {rootLabel} {gameState === 'REVEALED' ? quizData.quality : '—'}
             </p>
             <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-2">
-              {gameState === 'REVEALED' ? (STRING_NAMES[quizData.rootString] || `String ${quizData.rootString}`) : 'String ?'} Shape
+              {gameState === 'REVEALED' ? (
+                <>
+                  Shape: {revealShapeParts.baseLabel} | Voicing:{' '}
+                  <span className="text-[11px] font-black text-slate-700">{quizData.rootVoicing}</span>
+                </>
+              ) : 'Shape: ? | Voicing: ?'}
             </p>
           </div>
         </div>
@@ -453,13 +520,16 @@ export default function ChordQuizMode() {
                 setInputRoot(state.inputRoot);
                 setInputQuality(state.inputQuality);
                 setInputShape(state.inputShape);
+                setInputVoicing(state.inputVoicing);
                 setEnabledRootStrings(restoredRootStrings);
                 setKeyConstraint(restoredKeyConstraint);
                 setShowRootHint(state.showRootHint);
+                setShowVoicingHint(state.showVoicingHint);
                 setStreak(Number.isFinite(state.streak) && state.streak >= 0 ? state.streak : 0);
                 setGameState(state.gameState);
                 setLastSubmissionResult(state.wasCorrect);
             }} 
+              renderLabel={renderQuizHistoryLabel}
         />
         <LegendPanel />
       </aside>
@@ -543,7 +613,7 @@ export default function ChordQuizMode() {
                     return (
                       <label
                         key={rootString}
-                        className={`text-[11px] font-bold border rounded px-2 py-2 flex items-center justify-center gap-1 select-none ${checked ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100 cursor-pointer'}`}
+                        className={`text-[11px] font-bold border rounded px-2 py-2 flex items-center justify-center gap-1 ${checked ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100 cursor-pointer'}`}
                       >
                         <input
                           type="checkbox"

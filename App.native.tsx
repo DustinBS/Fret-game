@@ -72,7 +72,7 @@ export default function App() {
     VISUAL_ARCHETYPE: false,
   });
   const [sandboxPresetRequest, setSandboxPresetRequest] = useState<{ id: number; preset: ShapePresetRequest } | null>(null);
-  const [galleryScrollRequest, setGalleryScrollRequest] = useState<{ id: number; quality: string } | null>(null);
+  const [galleryScrollRequest, setGalleryScrollRequest] = useState<{ id: number; quality: string; chordId?: string } | null>(null);
 
   useEffect(() => {
     writeSessionBoolean(GALLERY_COLORS_KEY, useGalleryColors);
@@ -115,7 +115,7 @@ export default function App() {
       setGlobalKey(request.key);
     }
 
-    setGalleryScrollRequest({ id: Date.now(), quality: request.quality });
+    setGalleryScrollRequest({ id: Date.now(), quality: request.quality, chordId: request.chordId });
     activateTab('GALLERY');
   };
 

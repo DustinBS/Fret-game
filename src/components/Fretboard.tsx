@@ -30,7 +30,7 @@ export const Fretboard: React.FC<FretboardProps> = ({
     numFrets = 15
 }) => {
     return (
-        <div className="relative w-full max-w-[1000px] overflow-x-auto pb-4 custom-scrollbar px-4">
+        <div className="relative w-full max-w-[1000px] overflow-x-auto pb-4 custom-scrollbar px-4 select-none">
             {/* Fret Numbers */}
             <div className="flex pl-10 mb-1 min-w-max w-[calc(max(800px,100%))]" style={{ minWidth: `${numFrets * 50}px` }}>
                 {Array.from({ length: numFrets }).map((_, i) => {

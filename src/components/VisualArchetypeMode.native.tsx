@@ -10,7 +10,6 @@ import {
   KEY_CONSTRAINT_OPTIONS,
   keySignatureUsesFlats,
 } from '../utils/musicTheory';
-import { getGalleryOrderedChordDefinitions } from '../utils/chordOrdering';
 import {
   readSessionJson,
   readSessionString,
@@ -24,6 +23,8 @@ import {
 } from '../utils/visualArchetypes';
 import { buildShapeSheetPreview, resolveRootFretForShape } from '../utils/chordShapeRendering';
 import type { ShapePresetRequest } from '../types/nativeNavigation';
+import { buildFingeringOffsetArray } from '../utils/chordVoicing';
+import { buildOrderedChordEntries, buildQualityDisplayLabelMap } from '../utils/chordEntries';
 
 const DIATONIC_DISPLAY_ORDER = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'viio'];
 const VISUAL_ROOT_FILTER_KEY = 'fret-visual-root-filter';
@@ -59,7 +60,7 @@ function getGroupDiatonicOptions(group: VisualArchetypeGroup): string[] {
 function getActiveMemberForDiatonic(
   group: VisualArchetypeGroup,
   activeDiatonic: string | null,
-  qualityOrderMap: Map<string, number>,
+  chordOrderMap: Map<string, number>,
 ): VisualArchetypeMember {
   let candidates = [...group.members];
 
@@ -71,13 +72,16 @@ function getActiveMemberForDiatonic(
   }
 
   candidates.sort((a, b) => {
-    const aRank = qualityOrderMap.get(a.quality) ?? Number.MAX_SAFE_INTEGER;
-    const bRank = qualityOrderMap.get(b.quality) ?? Number.MAX_SAFE_INTEGER;
+    const aRank = chordOrderMap.get(a.chordId) ?? Number.MAX_SAFE_INTEGER;
+    const bRank = chordOrderMap.get(b.chordId) ?? Number.MAX_SAFE_INTEGER;
     if (aRank !== bRank) {
       return aRank - bRank;
     }
     if (a.quality !== b.quality) {
       return a.quality.localeCompare(b.quality);
+    }
+    if (a.definitionIndex !== b.definitionIndex) {
+      return a.definitionIndex - b.definitionIndex;
     }
     return a.shapeIndex - b.shapeIndex;
   });
@@ -112,7 +116,7 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
 
   const scrollRef = useRef<ScrollView>(null);
   const qualityOffsetsRef = useRef<Record<string, number>>({});
-  const [pendingQualityScroll, setPendingQualityScroll] = useState<string | null>(null);
+  const [pendingScrollTarget, setPendingScrollTarget] = useState<{ quality: string; chordId?: string } | null>(null);
   const [isChordListOpen, setIsChordListOpen] = useState(false);
   const [isKeyPickerOpen, setIsKeyPickerOpen] = useState(false);
   const [isRootFilterOpen, setIsRootFilterOpen] = useState(false);
@@ -124,20 +128,25 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
   );
 
   const groups = useMemo(() => buildVisualArchetypeGroups(CHORD_DICTIONARY), []);
-  const orderedChordDefs = useMemo(() => getGalleryOrderedChordDefinitions(CHORD_DICTIONARY), []);
+  const orderedChordEntries = useMemo(() => buildOrderedChordEntries(CHORD_DICTIONARY), []);
+  const qualityDisplayLabelMap = useMemo(() => buildQualityDisplayLabelMap(orderedChordEntries), [orderedChordEntries]);
 
-  const qualityOrderMap = useMemo(() => {
-    return new Map(orderedChordDefs.map((definition, index) => [definition.quality, index]));
-  }, [orderedChordDefs]);
+  const chordOrderMap = useMemo(() => {
+    return new Map(orderedChordEntries.map(({ chordId }, index) => [chordId, index]));
+  }, [orderedChordEntries]);
+
+  const getDisplayQuality = (chordId: string, quality: string): string => {
+    return qualityDisplayLabelMap.get(chordId) ?? quality;
+  };
 
   const filteredChordList = useMemo(() => {
     const query = chordSearch.trim().toLowerCase();
     if (!query) {
-      return orderedChordDefs;
+      return orderedChordEntries;
     }
 
-    return orderedChordDefs.filter((definition) => definition.quality.toLowerCase().includes(query));
-  }, [orderedChordDefs, chordSearch]);
+    return orderedChordEntries.filter(({ definition }) => definition.quality.toLowerCase().includes(query));
+  }, [orderedChordEntries, chordSearch]);
 
   const filteredGroups = useMemo(() => {
     if (rootStringFilter === 'ALL') {
@@ -151,10 +160,10 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
     qualityOffsetsRef.current = {};
   }, [filteredGroups]);
 
-  const availableChordQualities = useMemo(() => {
+  const availableChordIds = useMemo(() => {
     const set = new Set<string>();
     filteredGroups.forEach((group) => {
-      group.members.forEach((member) => set.add(member.quality));
+      group.members.forEach((member) => set.add(member.chordId));
     });
     return set;
   }, [filteredGroups]);
@@ -172,18 +181,21 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
   }, [selectedDiatonicByGroup]);
 
   useEffect(() => {
-    if (!pendingQualityScroll) {
+    if (!pendingScrollTarget) {
       return;
     }
 
-    const y = qualityOffsetsRef.current[pendingQualityScroll];
+    const y = pendingScrollTarget.chordId
+      ? qualityOffsetsRef.current[pendingScrollTarget.chordId]
+      : qualityOffsetsRef.current[pendingScrollTarget.quality];
+
     if (y === undefined) {
       return;
     }
 
     scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
-    setPendingQualityScroll(null);
-  }, [pendingQualityScroll, selectedDiatonicByGroup, rootStringFilter]);
+    setPendingScrollTarget(null);
+  }, [pendingScrollTarget, selectedDiatonicByGroup, rootStringFilter]);
 
   return (
     <View style={styles.screen}>
@@ -228,11 +240,12 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
               ? (rootObj.pitchClass + DIATONIC_INTERVALS[activeDiatonic]) % 12
               : rootObj.pitchClass;
 
-            const activeMember = getActiveMemberForDiatonic(group, activeDiatonic, qualityOrderMap);
+            const activeMember = getActiveMemberForDiatonic(group, activeDiatonic, chordOrderMap);
             const preview = buildShapeSheetPreview(activeMember.shape, previewRootPitchClass, useGalleryColors);
             const previewRootLabel = getNoteNameFromPitchClass(previewRootPitchClass, notationUsesFlats);
 
             const groupQualities = Array.from(new Set(group.members.map((member) => member.quality)));
+            const groupChordIds = Array.from(new Set(group.members.map((member) => member.chordId)));
 
             return (
               <View
@@ -240,15 +253,24 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
                 style={styles.groupCard}
                 onLayout={(event) => {
                   const y = event.nativeEvent.layout.y;
+                  groupChordIds.forEach((chordId) => {
+                    if (qualityOffsetsRef.current[chordId] === undefined) {
+                      qualityOffsetsRef.current[chordId] = y;
+                    }
+                  });
+
                   groupQualities.forEach((quality) => {
                     if (qualityOffsetsRef.current[quality] === undefined) {
                       qualityOffsetsRef.current[quality] = y;
                     }
                   });
 
-                  if (pendingQualityScroll && groupQualities.includes(pendingQualityScroll)) {
+                  if (
+                    (pendingScrollTarget?.chordId && groupChordIds.includes(pendingScrollTarget.chordId))
+                    || (!pendingScrollTarget?.chordId && pendingScrollTarget?.quality && groupQualities.includes(pendingScrollTarget.quality))
+                  ) {
                     scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
-                    setPendingQualityScroll(null);
+                    setPendingScrollTarget(null);
                   }
                 }}
               >
@@ -293,24 +315,29 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
                     const sandboxFret = resolveRootFretForShape(previewRootPitchClass, member.shape);
                     const diatonic = CHORD_QUALITY_DIATONIC_MAP[member.quality] || [];
                     const isActive =
-                      member.quality === activeMember.quality && member.shapeIndex === activeMember.shapeIndex;
+                      member.chordId === activeMember.chordId && member.shapeIndex === activeMember.shapeIndex;
+                    const fingeringArray = buildFingeringOffsetArray(member.shape);
 
                     return (
                       <Pressable
-                        key={`${member.quality}-${member.rootString}-${member.shapeIndex}`}
+                        key={`${member.chordId}-${member.rootString}-${member.shapeIndex}`}
                         style={[styles.memberCard, isActive ? styles.memberCardActive : null]}
                         onPress={() => {
                           onOpenSandbox?.({
+                            chordId: member.chordId,
                             quality: member.quality,
                             rootString: member.rootString,
+                            rootVoicing: member.rootVoicing,
+                            shapeIndex: member.shapeIndex,
                             fretOffset: sandboxFret,
                           });
                         }}
                       >
                         <Text style={styles.memberTitle}>{member.quality}</Text>
+                        <Text style={styles.memberFret}>Root Voicing: {member.rootVoicing}</Text>
                         <Text style={styles.memberText}>Raw: {member.rawIntervalSignature}</Text>
                         <Text style={styles.memberText}>Diatonic: {diatonic.length > 0 ? diatonic.join(', ') : 'none'}</Text>
-                        <Text style={styles.memberFret}>Sandbox fret: {sandboxFret}</Text>
+                        <Text style={styles.memberFret}>Fingering: {fingeringArray}</Text>
                       </Pressable>
                     );
                   })}
@@ -343,25 +370,26 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
             />
 
             <ScrollView style={styles.modalList} contentContainerStyle={styles.modalListContent}>
-              {filteredChordList.map((definition) => {
-                const isAvailable = availableChordQualities.has(definition.quality);
+              {filteredChordList.map(({ definition, chordId }) => {
+                const isAvailable = availableChordIds.has(chordId);
+                const displayQuality = getDisplayQuality(chordId, definition.quality);
                 return (
                   <Pressable
-                    key={definition.quality}
+                    key={chordId}
                     disabled={!isAvailable}
                     onPress={() => {
-                      const y = qualityOffsetsRef.current[definition.quality];
+                      const y = qualityOffsetsRef.current[chordId] ?? qualityOffsetsRef.current[definition.quality];
                       if (y !== undefined) {
                         scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
                       } else {
-                        setPendingQualityScroll(definition.quality);
+                        setPendingScrollTarget({ quality: definition.quality, chordId });
                       }
                       setIsChordListOpen(false);
                     }}
                     style={[styles.modalListItem, !isAvailable ? styles.modalListItemDisabled : null]}
                   >
                     <Text style={[styles.modalListItemText, !isAvailable ? styles.modalListItemTextDisabled : null]}>
-                      {definition.quality}
+                      {displayQuality}
                     </Text>
                   </Pressable>
                 );

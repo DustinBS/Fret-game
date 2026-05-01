@@ -263,6 +263,7 @@ export default function ChordQuizMode() {
   if (!quizData) return null;
 
   const shouldShowRootHint = gameState === 'REVEALED' || showRootHint;
+  const shouldShowVoicingReveal = gameState === 'REVEALED' || showVoicingHint;
   const rootLabel = shouldShowRootHint
     ? getNoteNameFromPitchClass(quizData.rootPitchClass, quizData.useFlats)
     : '—';
@@ -469,10 +470,9 @@ export default function ChordQuizMode() {
               {rootLabel} {gameState === 'REVEALED' ? quizData.quality : '—'}
             </p>
             <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-2">
-              {gameState === 'REVEALED' ? (
+              {shouldShowVoicingReveal ? (
                 <>
-                  Shape: {revealShapeParts.baseLabel} | Voicing:{' '}
-                  <span className="text-[11px] font-black text-slate-700">{quizData.rootVoicing}</span>
+                  Shape: {gameState === 'REVEALED' ? revealShapeParts.baseLabel : '?'} | Voicing: {quizData.rootVoicing}
                 </>
               ) : 'Shape: ? | Voicing: ?'}
             </p>

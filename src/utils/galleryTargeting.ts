@@ -1,5 +1,5 @@
-import type { ChordShape } from './chordLibrary.types';
 import type { OrderedChordEntry } from './chordEntries';
+import { getDefinitionRootVoicings } from './chordVoicing';
 
 interface FretLike {
   stringIndex: number;
@@ -7,24 +7,22 @@ interface FretLike {
   interval?: string;
 }
 
-interface GalleryTargetMatch {
+export interface GalleryTargetMatch {
   quality: string;
   chordId?: string;
+  rootString?: number;
+  rootVoicing?: string;
+  shapeIndex?: number;
+  isAvailable: boolean;
 }
 
-function buildShapeSignature(shape: ChordShape): string {
-  return [...shape.offsets]
-    .sort((a, b) => {
-      if (a.string !== b.string) {
-        return a.string - b.string;
-      }
-      if (a.offset !== b.offset) {
-        return a.offset - b.offset;
-      }
-      return a.interval.localeCompare(b.interval);
-    })
-    .map((offsetDef) => `${offsetDef.string}:${offsetDef.offset}:${offsetDef.interval}`)
-    .join('|');
+interface ResolveGalleryTargetOptions {
+  allowedChordIds?: ReadonlySet<string>;
+  allowedShapeKeys?: ReadonlySet<string>;
+}
+
+export function buildChordShapeTargetKey(chordId: string, shapeIndex: number): string {
+  return `${chordId}::${shapeIndex}`;
 }
 
 function inferRootString(clickedFrets: FretLike[]): number | null {
@@ -78,48 +76,75 @@ function buildClickedShapeSignature(clickedFrets: FretLike[], rootString: number
     .join('|');
 }
 
+function buildUnavailableTarget(quality: string): GalleryTargetMatch {
+  return {
+    quality,
+    isAvailable: false,
+  };
+}
+
+function isShapeAllowed(chordId: string, shapeIndex: number, allowedShapeKeys?: ReadonlySet<string>): boolean {
+  if (!allowedShapeKeys) {
+    return true;
+  }
+
+  return allowedShapeKeys.has(buildChordShapeTargetKey(chordId, shapeIndex));
+}
+
 export function resolveGalleryTargetFromSandbox(
   entries: OrderedChordEntry[],
   quality: string,
   clickedFrets: FretLike[],
+  options?: ResolveGalleryTargetOptions,
 ): GalleryTargetMatch {
   const qualityMatches = entries.filter((entry) => entry.definition.quality === quality);
   if (qualityMatches.length === 0) {
-    return { quality };
+    return buildUnavailableTarget(quality);
   }
 
-  if (qualityMatches.length === 1) {
-    return { quality, chordId: qualityMatches[0].chordId };
+  const allowedChordIds = options?.allowedChordIds;
+  const eligibleMatches = allowedChordIds
+    ? qualityMatches.filter((entry) => allowedChordIds.has(entry.chordId))
+    : qualityMatches;
+
+  if (eligibleMatches.length === 0) {
+    return buildUnavailableTarget(quality);
   }
 
   const inferredRootString = inferRootString(clickedFrets);
   const clickedSignature = buildClickedShapeSignature(clickedFrets, inferredRootString);
 
-  let bestMatch = qualityMatches[0];
-  let bestScore = Number.NEGATIVE_INFINITY;
+  // Strict mode for Sandbox outbound actions: require an exact shape match.
+  if (inferredRootString === null || !clickedSignature) {
+    return buildUnavailableTarget(quality);
+  }
 
-  qualityMatches.forEach((entry) => {
-    let score = 0;
-
-    if (inferredRootString !== null && entry.definition.shapes.some((shape) => shape.rootString === inferredRootString)) {
-      score += 50;
-    }
-
-    if (clickedSignature) {
-      const shapeSignatures = new Set(entry.definition.shapes.map((shape) => buildShapeSignature(shape)));
-      if (shapeSignatures.has(clickedSignature)) {
-        score += 100;
+  for (const entry of eligibleMatches) {
+    const matchingVoicing = getDefinitionRootVoicings(entry.definition).find((voicing) => {
+      if (voicing.rootString !== inferredRootString) {
+        return false;
       }
+
+      if (voicing.shapeSignature !== clickedSignature) {
+        return false;
+      }
+
+      return isShapeAllowed(entry.chordId, voicing.shapeIndex, options?.allowedShapeKeys);
+    });
+
+    if (!matchingVoicing) {
+      continue;
     }
 
-    if (score > bestScore) {
-      bestScore = score;
-      bestMatch = entry;
-    }
-  });
+    return {
+      quality,
+      chordId: entry.chordId,
+      rootString: matchingVoicing.rootString,
+      rootVoicing: matchingVoicing.rootVoicing,
+      shapeIndex: matchingVoicing.shapeIndex,
+      isAvailable: true,
+    };
+  }
 
-  return {
-    quality,
-    chordId: bestMatch.chordId,
-  };
+  return buildUnavailableTarget(quality);
 }

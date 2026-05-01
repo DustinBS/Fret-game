@@ -24,6 +24,7 @@ interface FretboardProps {
     windowStart?: number;
     windowEnd?: number;
     numFrets?: number;
+    autoPanTarget?: number;
     onFretClick: (stringIndex: number, fret: number) => void;
 }
 
@@ -116,12 +117,21 @@ export const Fretboard: React.FC<FretboardProps> = ({
     markers,
     windowStart = 0,
     windowEnd,
+    autoPanTarget,
     numFrets = 15,
     onFretClick,
 }) => {
+    const scrollRef = React.useRef<ScrollView>(null);
     const effectiveWindowEnd = windowEnd ?? numFrets - 1;
     const boardWidth = Math.max(760, numFrets * 48);
     const fretWidth = boardWidth / numFrets;
+
+    React.useEffect(() => {
+        if (autoPanTarget !== undefined && scrollRef.current) {
+            const targetX = Math.max(0, (autoPanTarget - 3) * fretWidth);
+            scrollRef.current.scrollTo({ x: targetX, animated: true });
+        }
+    }, [autoPanTarget, fretWidth]);
 
     const markerMap = new Map<string, FretMarker>();
     const anchorFretSet = new Set<number>();
@@ -136,6 +146,7 @@ export const Fretboard: React.FC<FretboardProps> = ({
     return (
         <View style={styles.container}>
             <ScrollView
+                ref={scrollRef}
                 horizontal
                 bounces={false}
                 showsHorizontalScrollIndicator={false}
@@ -259,7 +270,7 @@ const styles = StyleSheet.create({
         zIndex: 2,
     },
     inactiveFret: {
-        backgroundColor: 'rgba(226, 232, 240, 0.65)',
+        backgroundColor: 'rgba(255, 255, 255, 0)',
     },
     nutFret: {
         borderRightWidth: 6,

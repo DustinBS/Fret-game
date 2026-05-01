@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useSandbox } from '../hooks/useSandbox';
 import { Fretboard, type FretMarker } from './Fretboard';
@@ -6,7 +6,7 @@ import SheetMusic from './SheetMusic';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
 import { getIntervalColor, getIntervalHexColor, getKeySignatureInfo, getNoteName, TUNING } from '../utils/musicTheory';
 import { readSessionString, writeSessionString } from '../utils/viewState';
-import type { GalleryJumpRequest, ShapePresetRequest } from '../types/nativeNavigation';
+import type { GalleryJumpRequest, ShapePresetRequest, VisualArchetypeJumpRequest } from '../types/nativeNavigation';
 import { SheetFretSplit } from './SheetFretSplit.native';
 import { resolveRootFretForShape } from '../utils/chordShapeRendering';
 import {
@@ -16,19 +16,35 @@ import {
 } from '../utils/chordVoicing';
 import { buildOrderedChordEntries } from '../utils/chordEntries';
 import { buildRootVoicingDisplayParts } from '../utils/rootVoicingLabel';
-import { resolveGalleryTargetFromSandbox } from '../utils/galleryTargeting';
+import { buildVisualArchetypeGroups } from '../utils/visualArchetypes';
+import { resolveDetectedChordNavigationTargetFromSandbox } from '../utils/detectedChordNavigation';
+import { buildChordShapeTargetKey } from '../utils/galleryTargeting';
+import {
+  NATIVE_SCROLL_IDLE_HIGHLIGHT_MS,
+  NAVIGATION_FOCUS_HIGHLIGHT_HOLD_MS,
+} from '../utils/navigationFeedback';
 
 const SANDBOX_SEARCH_KEY = 'fret-sandbox-search-native';
 
 const LIBRARY_ROOT_STRINGS = [5, 4, 3] as const;
 
+function buildLibraryVoicingButtonKey(chordIdentifier: string, rootString: number, rootVoicing: string): string {
+  return `${chordIdentifier}|${rootString}|${rootVoicing.trim().toUpperCase()}`;
+}
+
 interface SandboxModeProps {
   presetRequest?: { id: number; preset: ShapePresetRequest } | null;
   onOpenGallery?: (request: GalleryJumpRequest) => void;
+  onOpenVisualArchetype?: (request: VisualArchetypeJumpRequest) => void;
   keyConstraint?: string;
 }
 
-const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery, keyConstraint = 'C' }) => {
+const SandboxMode: React.FC<SandboxModeProps> = ({
+  presetRequest,
+  onOpenGallery,
+  onOpenVisualArchetype,
+  keyConstraint = 'C',
+}) => {
   const {
     clickedFrets,
     handleFretClick,
@@ -44,12 +60,57 @@ const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery,
 
   const [search, setSearch] = useState(() => readSessionString(SANDBOX_SEARCH_KEY, ''));
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  
+  const [pendingLibraryFocus, setPendingLibraryFocus] = useState<{
+    chordId?: string;
+    quality: string;
+    rootString: number;
+    rootVoicing: string;
+  } | null>(null);
+  const [highlightedLibraryVoicingKey, setHighlightedLibraryVoicingKey] = useState<string | null>(null);
   const keyPitchClass = useMemo(() => getKeySignatureInfo(keyConstraint).pitchClass, [keyConstraint]);
+  const libraryScrollRef = useRef<ScrollView>(null);
+  const libraryQualityOffsetsRef = useRef<Record<string, number>>({});
+  const pendingLibraryHighlightKeyRef = useRef<string | null>(null);
+  const pendingLibraryHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushPendingLibraryHighlight = () => {
+    const nextFocusKey = pendingLibraryHighlightKeyRef.current;
+    if (!nextFocusKey) {
+      return;
+    }
+
+    setHighlightedLibraryVoicingKey(nextFocusKey);
+    pendingLibraryHighlightKeyRef.current = null;
+  };
+
+  const queueLibraryHighlightAfterScrollSettle = (focusKey: string) => {
+    pendingLibraryHighlightKeyRef.current = focusKey;
+    if (pendingLibraryHighlightTimeoutRef.current) {
+      clearTimeout(pendingLibraryHighlightTimeoutRef.current);
+    }
+
+    // Programmatic ScrollView motion can complete after layout callbacks. Delay highlight
+    // until we observe a small idle window with no scroll events to avoid race-condition flashes.
+    pendingLibraryHighlightTimeoutRef.current = setTimeout(() => {
+      pendingLibraryHighlightTimeoutRef.current = null;
+      flushPendingLibraryHighlight();
+    }, NATIVE_SCROLL_IDLE_HIGHLIGHT_MS);
+  };
 
   useEffect(() => {
     writeSessionString(SANDBOX_SEARCH_KEY, search);
   }, [search]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingLibraryHighlightTimeoutRef.current) {
+        clearTimeout(pendingLibraryHighlightTimeoutRef.current);
+      }
+      pendingLibraryHighlightTimeoutRef.current = null;
+      pendingLibraryHighlightKeyRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!presetRequest) {
@@ -108,9 +169,28 @@ const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery,
     }
 
     setChordShape(definition, shape, preset.fretOffset);
+
+    if (preset.focusLibrary && hasRootString && preset.rootVoicing) {
+      setSearch('');
+      setIsLibraryOpen(true);
+      setPendingLibraryFocus({
+        chordId: preset.chordId,
+        quality: definition.quality,
+        rootString: preset.rootString,
+        rootVoicing: preset.rootVoicing,
+      });
+    }
   }, [presetRequest, setChordShape]);
 
   const chordEntries = useMemo(() => buildOrderedChordEntries(CHORD_DICTIONARY), []);
+  const visualArchetypeShapeKeys = useMemo(() => {
+    const shapeKeys = new Set<string>();
+    buildVisualArchetypeGroups(CHORD_DICTIONARY).forEach((group) => {
+      group.members.forEach((member) => shapeKeys.add(buildChordShapeTargetKey(member.chordId, member.shapeIndex)));
+    });
+
+    return shapeKeys;
+  }, []);
 
   const renderRootVoicingLabel = (rootString: number, rootVoicing: string) => {
     const parts = buildRootVoicingDisplayParts(rootString, rootVoicing);
@@ -131,6 +211,40 @@ const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery,
 
     return chordEntries.filter(({ definition }) => definition.quality.toLowerCase().includes(query));
   }, [chordEntries, search]);
+
+  useEffect(() => {
+    if (!pendingLibraryFocus || !isLibraryOpen) {
+      return;
+    }
+
+    const y = pendingLibraryFocus.chordId
+      ? libraryQualityOffsetsRef.current[pendingLibraryFocus.chordId]
+      : libraryQualityOffsetsRef.current[pendingLibraryFocus.quality];
+
+    if (y === undefined) {
+      return;
+    }
+
+    libraryScrollRef.current?.scrollTo({ y: Math.max(0, y - 10), animated: true });
+
+    const chordIdentifier = pendingLibraryFocus.chordId ?? pendingLibraryFocus.quality;
+    queueLibraryHighlightAfterScrollSettle(
+      buildLibraryVoicingButtonKey(chordIdentifier, pendingLibraryFocus.rootString, pendingLibraryFocus.rootVoicing),
+    );
+    setPendingLibraryFocus(null);
+  }, [pendingLibraryFocus, isLibraryOpen, search]);
+
+  useEffect(() => {
+    if (!highlightedLibraryVoicingKey) {
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setHighlightedLibraryVoicingKey(null);
+    }, NAVIGATION_FOCUS_HIGHLIGHT_HOLD_MS);
+
+    return () => clearTimeout(timeoutId);
+  }, [highlightedLibraryVoicingKey]);
 
   const markers: FretMarker[] = clickedFrets.map((position) => ({
     stringIndex: position.stringIndex,
@@ -176,145 +290,166 @@ const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery,
       .sort((a, b) => a.pitch - b.pitch);
   }, [clickedFrets, useFlatsForLabels]);
 
+  const detectedChordNavigationTarget = useMemo(() => {
+    return resolveDetectedChordNavigationTargetFromSandbox({
+      chordName: analyzedChords[selectedChordIndex]?.name,
+      entries: chordEntries,
+      clickedFrets,
+      visualArchetypeShapeKeys,
+    });
+  }, [analyzedChords, selectedChordIndex, chordEntries, clickedFrets, visualArchetypeShapeKeys]);
+
+  const canOpenSelectedChordInGallery = Boolean(detectedChordNavigationTarget?.galleryTarget.isAvailable);
+  const canOpenSelectedChordInVisualArchetype = Boolean(detectedChordNavigationTarget?.visualArchetypeTarget.isAvailable);
+
   const openSelectedChordInGallery = () => {
     if (!onOpenGallery) {
       return;
     }
 
-    const chord = analyzedChords[selectedChordIndex];
-    if (!chord) {
+    if (!detectedChordNavigationTarget || !detectedChordNavigationTarget.galleryTarget.isAvailable) {
       return;
     }
-
-    const namePart = chord.name.split('/')[0].trim();
-    const match = namePart.match(/^([A-G][b#]?)(.*)$/);
-    if (!match) {
-      return;
-    }
-
-    const quality = match[2].trim();
-    const galleryTarget = resolveGalleryTargetFromSandbox(chordEntries, quality, clickedFrets);
 
     onOpenGallery({
-      key: match[1],
-      quality: galleryTarget.quality,
-      chordId: galleryTarget.chordId,
+      quality: detectedChordNavigationTarget.galleryTarget.quality,
+      chordId: detectedChordNavigationTarget.galleryTarget.chordId,
+      rootString: detectedChordNavigationTarget.galleryTarget.rootString,
+      rootVoicing: detectedChordNavigationTarget.galleryTarget.rootVoicing,
+      shapeIndex: detectedChordNavigationTarget.galleryTarget.shapeIndex,
     });
   };
 
-  const selectedChord = analyzedChords[selectedChordIndex];
+  const openSelectedChordInVisualArchetype = () => {
+    if (!onOpenVisualArchetype) {
+      return;
+    }
+
+    if (!detectedChordNavigationTarget || !detectedChordNavigationTarget.visualArchetypeTarget.isAvailable) {
+      return;
+    }
+
+    onOpenVisualArchetype({
+      quality: detectedChordNavigationTarget.visualArchetypeTarget.quality,
+      chordId: detectedChordNavigationTarget.visualArchetypeTarget.chordId,
+      rootString: detectedChordNavigationTarget.visualArchetypeTarget.rootString,
+      rootVoicing: detectedChordNavigationTarget.visualArchetypeTarget.rootVoicing,
+      shapeIndex: detectedChordNavigationTarget.visualArchetypeTarget.shapeIndex,
+    });
+  };
 
   return (
     <View style={styles.screen}>
-      <View style={styles.tinyHeader}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.headerChipRail} contentContainerStyle={styles.headerChipRailContent}>
-          {analyzedChords.length === 0 ? (
-            <View style={styles.headerEmptyChip}>
-              <Text style={styles.headerEmptyChipText}>[No Detected Chord]</Text>
-            </View>
-          ) : (
-            analyzedChords.map((chord, index) => (
-              <Pressable
-                key={`${chord.name}-${index}`}
-                onPress={() => setSelectedChordIndex(index)}
-                style={[styles.headerChordChip, selectedChordIndex === index ? styles.headerChordChipActive : null]}
-              >
-                <Text style={[styles.headerChordChipText, selectedChordIndex === index ? styles.headerChordChipTextActive : null]}>
-                  [{chord.name}]
-                </Text>
-              </Pressable>
-            ))
-          )}
-        </ScrollView>
+      <View style={styles.sideRail}>
+        <ScrollView contentContainerStyle={styles.sideRailContent} showsVerticalScrollIndicator={false}>
+          <Text style={styles.sideRailTitle}>Sandbox Menu</Text>
+          <Pressable
+            onPress={() => {
+              setIsLibraryOpen(true);
+            }}
+            style={styles.menuAction}
+          >
+            <Text style={styles.menuActionText}>Open Chord Library</Text>
+          </Pressable>
 
-        <Pressable onPress={() => setIsMenuOpen(true)} style={styles.menuButton}>
-          <Text style={styles.menuButtonText}>☰</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.body}>
-        <SheetFretSplit
-          modeKey="SANDBOX"
-          sheetTitle="Music Sheet"
-          sheetContent={
-            <View style={styles.sheetContentWrap}>
-              <View style={styles.sheetCard}>
-                <SheetMusic
-                  notes={activePitches}
-                  colors={clickedFrets.map((position) => (position.interval ? getIntervalHexColor(position.interval) : '#2563eb'))}
-                  gameMode="SANDBOX"
-                  useFlats={useFlatsForLabels}
-                  zoomSemitones={zoomSemitones}
-                />
-              </View>
-
-              <Text style={styles.sectionLabel}>Note Sequence</Text>
-              <View style={styles.noteChipRow}>
-                {sortedNotes.length > 0 ? (
-                  sortedNotes.map((note, index) => (
-                    <View
-                      key={`${note.stringIndex}-${note.fret}-${index}`}
-                      style={[
-                        styles.noteChip,
-                        { backgroundColor: note.interval ? getIntervalHexColor(note.interval) : '#2563eb' },
-                      ]}
-                    >
-                      <Text style={styles.noteChipText}>{note.note}{note.octave}</Text>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={styles.emptyText}>Tap frets to build a chord.</Text>
-                )}
-              </View>
-            </View>
-          }
-          fretboardContent={<Fretboard numFrets={25} markers={markers} onFretClick={handleFretClick} />}
-        />
-      </View>
-
-      <Modal visible={isMenuOpen} animationType="fade" transparent onRequestClose={() => setIsMenuOpen(false)}>
-        <View style={styles.menuBackdrop}>
-          <View style={styles.menuSheet}>
-            <ScrollView contentContainerStyle={styles.menuSheetContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.menuHeader}>
-                <Text style={styles.menuTitle}>Sandbox Menu</Text>
-                <Pressable onPress={() => setIsMenuOpen(false)} hitSlop={8}>
-                  <Text style={styles.menuClose}>Close</Text>
-                </Pressable>
-              </View>
-
-              <Pressable
-                onPress={() => {
-                  setIsMenuOpen(false);
-                  setIsLibraryOpen(true);
-                }}
-                style={styles.menuAction}
-              >
-                <Text style={styles.menuActionText}>Open Chord Library</Text>
-              </Pressable>
-
-              <View style={styles.menuToggleRow}>
-                <Text style={styles.menuToggleLabel}>One Note / String</Text>
-                <Switch value={oneNotePerString} onValueChange={setOneNotePerString} />
-              </View>
-
-              <Pressable onPress={clearSelection} style={styles.menuAction}>
-                <Text style={styles.menuActionText}>Clear Selection</Text>
-              </Pressable>
-
-              <Pressable
-                onPress={openSelectedChordInGallery}
-                disabled={!selectedChord}
-                style={[styles.menuAction, !selectedChord ? styles.menuActionDisabled : null]}
-              >
-                <Text style={[styles.menuActionText, !selectedChord ? styles.menuActionTextDisabled : null]}>
-                  See In Gallery
-                </Text>
-              </Pressable>
-            </ScrollView>
+          <View style={styles.menuToggleRow}>
+            <Text style={styles.menuToggleLabel}>One Note / String</Text>
+            <Switch value={oneNotePerString} onValueChange={setOneNotePerString} />
           </View>
+
+          <Pressable onPress={clearSelection} style={styles.menuAction}>
+            <Text style={styles.menuActionText}>Clear Selection</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={openSelectedChordInGallery}
+            disabled={!canOpenSelectedChordInGallery}
+            style={[styles.menuAction, !canOpenSelectedChordInGallery ? styles.menuActionDisabled : null]}
+          >
+            <Text style={[styles.menuActionText, !canOpenSelectedChordInGallery ? styles.menuActionTextDisabled : null]}>
+              See In Gallery
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={openSelectedChordInVisualArchetype}
+            disabled={!canOpenSelectedChordInVisualArchetype}
+            style={[styles.menuAction, !canOpenSelectedChordInVisualArchetype ? styles.menuActionDisabled : null]}
+          >
+            <Text style={[styles.menuActionText, !canOpenSelectedChordInVisualArchetype ? styles.menuActionTextDisabled : null]}>
+              See Visual Archetype
+            </Text>
+          </Pressable>
+        </ScrollView>
+      </View>
+
+      <View style={styles.mainContent}>
+        <View style={styles.tinyHeader}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.headerChipRail} contentContainerStyle={styles.headerChipRailContent}>
+            {analyzedChords.length === 0 ? (
+              <View style={styles.headerEmptyChip}>
+                <Text style={styles.headerEmptyChipText}>[No Detected Chord]</Text>
+              </View>
+            ) : (
+              analyzedChords.map((chord, index) => (
+                <Pressable
+                  key={`${chord.name}-${index}`}
+                  onPress={() => setSelectedChordIndex(index)}
+                  style={[styles.headerChordChip, selectedChordIndex === index ? styles.headerChordChipActive : null]}
+                >
+                  <Text style={[styles.headerChordChipText, selectedChordIndex === index ? styles.headerChordChipTextActive : null]}>
+                    [{chord.name}]
+                  </Text>
+                </Pressable>
+              ))
+            )}
+          </ScrollView>
+
+          <Pressable onPress={() => console.log('History Placeholder')} style={styles.menuButton}>
+            <Text style={styles.menuButtonText}>History</Text>
+          </Pressable>
         </View>
-      </Modal>
+
+        <View style={styles.body}>
+          <SheetFretSplit
+            modeKey="SANDBOX"
+            sheetTitle="Music Sheet"
+            sheetContent={
+              <View style={styles.sheetContentWrap}>
+                <View style={styles.sheetCard}>
+                  <SheetMusic
+                    notes={activePitches}
+                    colors={clickedFrets.map((position) => (position.interval ? getIntervalHexColor(position.interval) : '#2563eb'))}
+                    gameMode="SANDBOX"
+                    useFlats={useFlatsForLabels}
+                    zoomSemitones={zoomSemitones}
+                  />
+                </View>
+
+                <Text style={styles.sectionLabel}>Note Sequence</Text>
+                <View style={styles.noteChipRow}>
+                  {sortedNotes.length > 0 ? (
+                    sortedNotes.map((note, index) => (
+                      <View
+                        key={`${note.stringIndex}-${note.fret}-${index}`}
+                        style={[
+                          styles.noteChip,
+                          { backgroundColor: note.interval ? getIntervalHexColor(note.interval) : '#2563eb' },
+                        ]}
+                      >
+                        <Text style={styles.noteChipText}>{note.note}{note.octave}</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.emptyText}>Tap frets to build a chord.</Text>
+                  )}
+                </View>
+              </View>
+            }
+            fretboardContent={<Fretboard numFrets={25} markers={markers} onFretClick={handleFretClick} />}
+          />
+        </View>
+      </View>
 
       <Modal visible={isLibraryOpen} animationType="slide" transparent onRequestClose={() => setIsLibraryOpen(false)}>
         <View style={styles.modalBackdrop}>
@@ -340,9 +475,51 @@ const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery,
               autoCorrect={false}
             />
 
-            <ScrollView style={styles.modalList} contentContainerStyle={styles.modalListContent}>
+            <ScrollView
+              ref={libraryScrollRef}
+              style={styles.modalList}
+              contentContainerStyle={styles.modalListContent}
+              scrollEventThrottle={16}
+              onScroll={() => {
+                if (!pendingLibraryHighlightKeyRef.current) {
+                  return;
+                }
+
+                queueLibraryHighlightAfterScrollSettle(pendingLibraryHighlightKeyRef.current);
+              }}
+              onMomentumScrollEnd={flushPendingLibraryHighlight}
+              onScrollEndDrag={flushPendingLibraryHighlight}
+            >
               {filteredChords.map(({ definition, chordId }) => (
-                <View key={chordId} style={styles.modalCard}>
+                <View
+                  key={chordId}
+                  style={styles.modalCard}
+                  onLayout={(event) => {
+                    libraryQualityOffsetsRef.current[chordId] = event.nativeEvent.layout.y;
+                    if (libraryQualityOffsetsRef.current[definition.quality] === undefined) {
+                      libraryQualityOffsetsRef.current[definition.quality] = event.nativeEvent.layout.y;
+                    }
+
+                    if (!pendingLibraryFocus) {
+                      return;
+                    }
+
+                    const focusCardMatches = pendingLibraryFocus.chordId
+                      ? pendingLibraryFocus.chordId === chordId
+                      : pendingLibraryFocus.quality === definition.quality;
+
+                    if (!focusCardMatches) {
+                      return;
+                    }
+
+                    libraryScrollRef.current?.scrollTo({ y: Math.max(0, event.nativeEvent.layout.y - 10), animated: true });
+                    const chordIdentifier = pendingLibraryFocus.chordId ?? pendingLibraryFocus.quality;
+                    queueLibraryHighlightAfterScrollSettle(
+                      buildLibraryVoicingButtonKey(chordIdentifier, pendingLibraryFocus.rootString, pendingLibraryFocus.rootVoicing),
+                    );
+                    setPendingLibraryFocus(null);
+                  }}
+                >
                   <Text style={styles.modalCardTitle}>{definition.quality}</Text>
                   <View style={styles.modalCardActions}>
                     {LIBRARY_ROOT_STRINGS.map((rootString) => {
@@ -360,19 +537,28 @@ const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery,
 
                       return (
                         <View key={`${chordId}-${rootString}`} style={styles.shapeColumn}>
-                          {rootStringOptions.map((option) => (
-                            <Pressable
-                              key={`${chordId}-${rootString}-${option.rootVoicing}-${option.shapeIndex}`}
-                              style={styles.shapeButton}
-                              onPress={() => {
-                                const pinnedRootFret = resolveRootFretForShape(keyPitchClass, option.shape);
-                                setChordShape(definition, option.shape, pinnedRootFret);
-                                setIsLibraryOpen(false);
-                              }}
-                            >
-                              {renderRootVoicingLabel(rootString, option.rootVoicing)}
-                            </Pressable>
-                          ))}
+                          {rootStringOptions.map((option) => {
+                            const buttonFocusKey = buildLibraryVoicingButtonKey(chordId, rootString, option.rootVoicing);
+
+                            return (
+                              <Pressable
+                                key={`${chordId}-${rootString}-${option.rootVoicing}-${option.shapeIndex}`}
+                                style={[
+                                  styles.shapeButton,
+                                  highlightedLibraryVoicingKey === buttonFocusKey
+                                    ? styles.shapeButtonFocused
+                                    : null,
+                                ]}
+                                onPress={() => {
+                                  const pinnedRootFret = resolveRootFretForShape(keyPitchClass, option.shape);
+                                  setChordShape(definition, option.shape, pinnedRootFret);
+                                  setIsLibraryOpen(false);
+                                }}
+                              >
+                                {renderRootVoicingLabel(rootString, option.rootVoicing)}
+                              </Pressable>
+                            );
+                          })}
                         </View>
                       );
                     })}
@@ -390,7 +576,28 @@ const SandboxMode: React.FC<SandboxModeProps> = ({ presetRequest, onOpenGallery,
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+    flexDirection: 'row',
     backgroundColor: '#ffffff',
+  },
+  mainContent: {
+    flex: 1,
+    flexDirection: 'column',
+  },
+  sideRail: {
+    width: 190,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+  },
+  sideRailContent: {
+    padding: 12,
+    gap: 16,
+  },
+  sideRailTitle: {
+    color: '#0f172a',
+    fontSize: 14,
+    fontWeight: '900',
+    marginBottom: 4,
   },
   tinyHeader: {
     height: 44,
@@ -506,46 +713,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
   },
-  menuBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.38)',
-    justifyContent: 'flex-start',
-    paddingTop: 48,
-    paddingHorizontal: 10,
-  },
-  menuSheet: {
-    maxHeight: '88%',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  menuSheetContent: {
-    gap: 10,
-    paddingBottom: 10,
-  },
-  menuHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  menuTitle: {
-    color: '#0f172a',
-    fontSize: 12,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  menuClose: {
-    color: '#64748b',
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.7,
-  },
+  
+  
+  
+  
+  
+  
   menuAction: {
     borderRadius: 8,
     borderWidth: 1,
@@ -579,38 +752,11 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.7,
   },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.55)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    maxHeight: '88%',
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 24,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#0f172a',
-  },
-  modalClose: {
-    color: '#475569',
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
+  
+  
+  
+  
+  
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -669,6 +815,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
     alignItems: 'center',
     paddingVertical: 7,
+  },
+  shapeButtonFocused: {
+    borderColor: '#f59e0b',
+    borderWidth: 2,
+    backgroundColor: '#fffbeb',
   },
   shapeButtonDisabled: {
     borderColor: '#e2e8f0',

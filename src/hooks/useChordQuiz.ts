@@ -4,7 +4,7 @@ import { getKeySignatureInfo, keySignatureUsesFlats, KEY_CONSTRAINT_OPTIONS, TUN
 import { CHORD_QUALITY_DIATONIC_MAP, DIATONIC_INTERVALS } from '../utils/diatonic';
 import { readSessionJson, writeSessionJson } from '../utils/viewState';
 import { buildChordDefinitionId, getShapeRootVoicing } from '../utils/chordVoicing';
-import { getRootVoicingArchetype } from '../utils/rootVoicingLabel';
+import { buildLooseRootVoicingLabel, getRootVoicingArchetype } from '../utils/rootVoicingLabel';
 
 type QuizState = 'PLAYING' | 'REVEALED';
 
@@ -240,16 +240,18 @@ export function useChordQuiz() {
   }, [showRootHint, quizData, gameState]);
 
   useEffect(() => {
-    if (!quizData || gameState !== 'PLAYING') {
+    if (!quizData) {
       return;
     }
 
     if (showVoicingHint) {
-      setInputVoicing(quizData.rootVoicing);
+      setInputVoicing(buildLooseRootVoicingLabel(quizData.rootVoicing));
       return;
     }
 
-    setInputVoicing('');
+    if (gameState === 'PLAYING') {
+      setInputVoicing('');
+    }
   }, [showVoicingHint, quizData, gameState]);
 
   const generateQuiz = useCallback(() => {
@@ -388,7 +390,7 @@ export function useChordQuiz() {
     setInputRoot(showRootHint ? hintedRoot : '');
     setInputQuality('');
     setInputShape('');
-    setInputVoicing(showVoicingHint ? rootVoicing : '');
+    setInputVoicing(showVoicingHint ? buildLooseRootVoicingLabel(rootVoicing) : '');
     setGameState('PLAYING');
 
     setRecentQuizKeys((prev) => {

@@ -11,7 +11,7 @@ import SandboxMode from './src/components/SandboxMode.native';
 import ChordQuizMode from './src/components/ChordQuizMode.native';
 import GalleryMode from './src/components/GalleryMode.native';
 import VisualArchetypeMode from './src/components/VisualArchetypeMode.native';
-import type { GalleryJumpRequest, ShapePresetRequest } from './src/types/nativeNavigation';
+import type { GalleryJumpRequest, ShapePresetRequest, VisualArchetypeJumpRequest } from './src/types/nativeNavigation';
 
 type NativeTab = 'TRAINER' | 'SANDBOX' | 'QUIZ' | 'GALLERY' | 'VISUAL_ARCHETYPE';
 
@@ -39,21 +39,19 @@ const TAB_ORDER: NativeTab[] = ['TRAINER', 'SANDBOX', 'QUIZ', 'GALLERY', 'VISUAL
 function NativeMenuButton({
   tab,
   active,
-  collapsed,
   onPress,
 }: {
   tab: NativeTab;
   active: boolean;
-  collapsed: boolean;
   onPress: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.sideButton, active ? styles.sideButtonActive : null, collapsed ? styles.sideButtonCollapsed : null]}
+      style={[styles.sideButton, active ? styles.sideButtonActive : null]}
     >
       <Text style={[styles.sideButtonText, active ? styles.sideButtonTextActive : null]}>
-        {collapsed ? TAB_SHORT_LABELS[tab] : TAB_LABELS[tab]}
+        {TAB_LABELS[tab]}
       </Text>
     </Pressable>
   );
@@ -72,7 +70,22 @@ export default function App() {
     VISUAL_ARCHETYPE: false,
   });
   const [sandboxPresetRequest, setSandboxPresetRequest] = useState<{ id: number; preset: ShapePresetRequest } | null>(null);
-  const [galleryScrollRequest, setGalleryScrollRequest] = useState<{ id: number; quality: string; chordId?: string } | null>(null);
+  const [galleryScrollRequest, setGalleryScrollRequest] = useState<{
+    id: number;
+    quality: string;
+    chordId?: string;
+    rootString?: number;
+    rootVoicing?: string;
+    shapeIndex?: number;
+  } | null>(null);
+  const [visualArchetypeScrollRequest, setVisualArchetypeScrollRequest] = useState<{
+    id: number;
+    quality: string;
+    chordId?: string;
+    rootString?: number;
+    rootVoicing?: string;
+    shapeIndex?: number;
+  } | null>(null);
 
   useEffect(() => {
     writeSessionBoolean(GALLERY_COLORS_KEY, useGalleryColors);
@@ -111,36 +124,47 @@ export default function App() {
   };
 
   const openGalleryFromSandbox = (request: GalleryJumpRequest) => {
-    if (KEY_CONSTRAINT_OPTIONS.includes(request.key)) {
+    if (request.key && KEY_CONSTRAINT_OPTIONS.includes(request.key)) {
       setGlobalKey(request.key);
     }
 
-    setGalleryScrollRequest({ id: Date.now(), quality: request.quality, chordId: request.chordId });
+    setGalleryScrollRequest({
+      id: Date.now(),
+      quality: request.quality,
+      chordId: request.chordId,
+      rootString: request.rootString,
+      rootVoicing: request.rootVoicing,
+      shapeIndex: request.shapeIndex,
+    });
     activateTab('GALLERY');
+  };
+
+  const openVisualArchetypeFromSandbox = (request: VisualArchetypeJumpRequest) => {
+    if (request.key && KEY_CONSTRAINT_OPTIONS.includes(request.key)) {
+      setGlobalKey(request.key);
+    }
+
+    setVisualArchetypeScrollRequest({
+      id: Date.now(),
+      quality: request.quality,
+      chordId: request.chordId,
+      rootString: request.rootString,
+      rootVoicing: request.rootVoicing,
+      shapeIndex: request.shapeIndex,
+    });
+    activateTab('VISUAL_ARCHETYPE');
   };
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['right', 'bottom', 'left']}>
         <View style={styles.container}>
-          <View style={[styles.sideRail, sidebarCollapsed ? styles.sideRailCollapsed : null]}>
-            <View style={styles.sideRailHeader}>
-              {!sidebarCollapsed ? <Text style={styles.sideRailTitle}>Modes</Text> : null}
-              <Pressable
-                onPress={() => setSidebarCollapsed((prev) => !prev)}
-                style={styles.sideRailChevronButton}
-                hitSlop={8}
-              >
-                <Text style={styles.sideRailChevronText}>{sidebarCollapsed ? '>' : '<'}</Text>
-              </Pressable>
-            </View>
-
-            <ScrollView style={styles.sideRailList} contentContainerStyle={styles.sideRailListContent}>
+          <View style={styles.topNavBar}>
+            <ScrollView horizontal style={styles.topNavBarList} contentContainerStyle={styles.topNavBarListContent} showsHorizontalScrollIndicator={false}>
               {TAB_ORDER.map((tab) => (
                 <NativeMenuButton
                   key={tab}
                   tab={tab}
-                  collapsed={sidebarCollapsed}
                   active={activeTab === tab}
                   onPress={() => activateTab(tab)}
                 />
@@ -158,6 +182,7 @@ export default function App() {
                 <SandboxMode
                   presetRequest={sandboxPresetRequest}
                   onOpenGallery={openGalleryFromSandbox}
+                  onOpenVisualArchetype={openVisualArchetypeFromSandbox}
                   keyConstraint={globalKey}
                 />
               </View>
@@ -190,6 +215,7 @@ export default function App() {
                   onToggleGalleryColors={() => setUseGalleryColors((prev) => !prev)}
                   onChangeKeyConstraint={setGlobalKey}
                   onOpenSandbox={openSandboxFromShape}
+                  scrollRequest={visualArchetypeScrollRequest}
                 />
               </View>
             ) : null}
@@ -203,74 +229,37 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#f8fafc',
   },
   container: {
     flex: 1,
-    flexDirection: 'row',
+    flexDirection: 'column',
     backgroundColor: '#ffffff',
   },
-  sideRail: {
-    width: 190,
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: '#cbd5e1',
+  topNavBar: {
+    height: 48,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#cbd5e1',
     backgroundColor: '#f8fafc',
+  },
+  topNavBarList: {
+    flex: 1,
+  },
+  topNavBarListContent: {
+    gap: 8,
     paddingHorizontal: 8,
-    paddingTop: 8,
-    paddingBottom: 10,
-  },
-  sideRailCollapsed: {
-    width: 64,
-    paddingHorizontal: 6,
-  },
-  sideRailHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    flexDirection: 'row',
   },
-  sideRailTitle: {
-    color: '#64748b',
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  sideRailChevronButton: {
-    width: 24,
-    height: 24,
+  sideButton: {
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#cbd5e1',
     backgroundColor: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  sideRailChevronText: {
-    color: '#1e293b',
-    fontSize: 11,
-    fontWeight: '900',
-    marginTop: -1,
-  },
-  sideRailList: {
-    flex: 1,
-  },
-  sideRailListContent: {
-    gap: 6,
-    paddingBottom: 6,
-  },
-  sideButton: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sideButtonCollapsed: {
-    paddingHorizontal: 0,
   },
   sideButtonActive: {
     borderColor: '#2563eb',
@@ -278,7 +267,7 @@ const styles = StyleSheet.create({
   },
   sideButtonText: {
     color: '#334155',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.7,

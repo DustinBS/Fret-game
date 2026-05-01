@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { FlatList, Modal, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
 import {
   getKeySignatureInfo,
@@ -25,6 +25,10 @@ import {
   getRootStringShapeOptions,
 } from '../utils/chordVoicing';
 import { buildOrderedChordEntries, buildQualityDisplayLabelMap } from '../utils/chordEntries';
+import {
+  NATIVE_SCROLL_IDLE_HIGHLIGHT_MS,
+  NAVIGATION_FOCUS_HIGHLIGHT_HOLD_MS,
+} from '../utils/navigationFeedback';
 
 const GALLERY_MAIN_SCROLL_KEY = 'fret-gallery-main-scroll';
 const GALLERY_SHOW_DIATONIC_KEY = 'fret-gallery-show-diatonic';
@@ -33,13 +37,37 @@ const GALLERY_SELECTED_VOICING_KEY = 'fret-gallery-selected-voicing-native';
 
 const STRING_SHAPES = [5, 4, 3] as const;
 
+function buildGalleryShapeCellKey(
+  chordId: string,
+  rootString: number,
+  rootVoicing: string,
+  shapeIndex: number,
+): string {
+  return `${chordId}|${rootString}|${rootVoicing.trim().toUpperCase()}|${shapeIndex}`;
+}
+
+interface GalleryScrollTarget {
+  quality: string;
+  chordId?: string;
+  rootString?: number;
+  rootVoicing?: string;
+  shapeIndex?: number;
+}
+
 interface GalleryModeProps {
   keyConstraint: string;
   useGalleryColors: boolean;
   onToggleGalleryColors?: () => void;
   onChangeKeyConstraint?: (next: string) => void;
   onOpenSandbox?: (request: ShapePresetRequest) => void;
-  scrollRequest?: { id: number; quality: string; chordId?: string } | null;
+  scrollRequest?: {
+    id: number;
+    quality: string;
+    chordId?: string;
+    rootString?: number;
+    rootVoicing?: string;
+    shapeIndex?: number;
+  } | null;
 }
 
 const GalleryMode: React.FC<GalleryModeProps> = ({
@@ -62,9 +90,46 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
   const [isKeyPickerOpen, setIsKeyPickerOpen] = useState(false);
   const [qualitySearch, setQualitySearch] = useState('');
 
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<FlatList>(null);
   const qualityOffsetsRef = useRef<Record<string, number>>({});
-  const [pendingScrollTarget, setPendingScrollTarget] = useState<{ quality: string; chordId?: string } | null>(null);
+  const [pendingScrollTarget, setPendingScrollTarget] = useState<GalleryScrollTarget | null>(null);
+  const [highlightedShapeCellKey, setHighlightedShapeCellKey] = useState<string | null>(null);
+  const pendingShapeHighlightKeyRef = useRef<string | null>(null);
+  const pendingShapeHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const buildShapeCellKeyFromTarget = (target: GalleryScrollTarget): string | null => {
+    if (!target.chordId) {
+      return null;
+    }
+
+    if (target.rootString === undefined || !target.rootVoicing || target.shapeIndex === undefined) {
+      return null;
+    }
+
+    return buildGalleryShapeCellKey(target.chordId, target.rootString, target.rootVoicing, target.shapeIndex);
+  };
+
+  const flushPendingShapeHighlight = () => {
+    const nextFocusKey = pendingShapeHighlightKeyRef.current;
+    if (!nextFocusKey) {
+      return;
+    }
+
+    setHighlightedShapeCellKey(nextFocusKey);
+    pendingShapeHighlightKeyRef.current = null;
+  };
+
+  const queueShapeHighlightAfterScrollSettle = (focusKey: string) => {
+    pendingShapeHighlightKeyRef.current = focusKey;
+    if (pendingShapeHighlightTimeoutRef.current) {
+      clearTimeout(pendingShapeHighlightTimeoutRef.current);
+    }
+
+    pendingShapeHighlightTimeoutRef.current = setTimeout(() => {
+      pendingShapeHighlightTimeoutRef.current = null;
+      flushPendingShapeHighlight();
+    }, NATIVE_SCROLL_IDLE_HIGHLIGHT_MS);
+  };
 
   const orderedChordEntries = useMemo(() => buildOrderedChordEntries(CHORD_DICTIONARY), []);
   const qualityDisplayLabelMap = useMemo(() => buildQualityDisplayLabelMap(orderedChordEntries), [orderedChordEntries]);
@@ -105,13 +170,23 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
     const target = readSessionNumber(GALLERY_MAIN_SCROLL_KEY, 0);
     const first = requestAnimationFrame(() => {
       const second = requestAnimationFrame(() => {
-        scrollRef.current?.scrollTo({ y: target, animated: false });
+        scrollRef.current?.scrollToOffset({ offset: target, animated: false });
       });
 
       return () => cancelAnimationFrame(second);
     });
 
     return () => cancelAnimationFrame(first);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (pendingShapeHighlightTimeoutRef.current) {
+        clearTimeout(pendingShapeHighlightTimeoutRef.current);
+      }
+      pendingShapeHighlightTimeoutRef.current = null;
+      pendingShapeHighlightKeyRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -122,6 +197,9 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
     setPendingScrollTarget({
       quality: scrollRequest.quality,
       chordId: scrollRequest.chordId,
+      rootString: scrollRequest.rootString,
+      rootVoicing: scrollRequest.rootVoicing,
+      shapeIndex: scrollRequest.shapeIndex,
     });
   }, [scrollRequest]);
 
@@ -138,21 +216,41 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
       return;
     }
 
-    scrollRef.current?.scrollTo({ y: Math.max(0, y - 10), animated: true });
+    scrollRef.current?.scrollToOffset({ offset: Math.max(0, y - 10), animated: true });
+    const targetShapeKey = buildShapeCellKeyFromTarget(pendingScrollTarget);
+    if (targetShapeKey) {
+      queueShapeHighlightAfterScrollSettle(targetShapeKey);
+    }
     setPendingScrollTarget(null);
   }, [pendingScrollTarget, selectedDiatonic, showDiatonic]);
 
-  const scrollToQuality = (quality: string, chordId?: string) => {
-    const y = chordId
-      ? qualityOffsetsRef.current[chordId]
-      : qualityOffsetsRef.current[quality];
-
-    if (y !== undefined) {
-      scrollRef.current?.scrollTo({ y: Math.max(0, y - 10), animated: true });
+  useEffect(() => {
+    if (!highlightedShapeCellKey) {
       return;
     }
 
-    setPendingScrollTarget({ quality, chordId });
+    const timeoutId = setTimeout(() => {
+      setHighlightedShapeCellKey(null);
+    }, NAVIGATION_FOCUS_HIGHLIGHT_HOLD_MS);
+
+    return () => clearTimeout(timeoutId);
+  }, [highlightedShapeCellKey]);
+
+  const scrollToQuality = (target: GalleryScrollTarget) => {
+    const y = target.chordId
+      ? qualityOffsetsRef.current[target.chordId]
+      : qualityOffsetsRef.current[target.quality];
+
+    if (y !== undefined) {
+      scrollRef.current?.scrollToOffset({ offset: Math.max(0, y - 10), animated: true });
+      const targetShapeKey = buildShapeCellKeyFromTarget(target);
+      if (targetShapeKey) {
+        queueShapeHighlightAfterScrollSettle(targetShapeKey);
+      }
+      return;
+    }
+
+    setPendingScrollTarget(target);
   };
 
   return (
@@ -180,16 +278,26 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
         </Pressable>
       </View>
 
-      <ScrollView
+      <FlatList
         ref={scrollRef}
         style={styles.mainScroll}
         contentContainerStyle={styles.mainContent}
+        data={orderedChordEntries}
+        initialNumToRender={10}
+        windowSize={5}
+        removeClippedSubviews={true}
+        keyExtractor={(item) => item.chordId}
         onScroll={(event) => {
           writeSessionNumber(GALLERY_MAIN_SCROLL_KEY, event.nativeEvent.contentOffset.y);
+          if (pendingShapeHighlightKeyRef.current) {
+            queueShapeHighlightAfterScrollSettle(pendingShapeHighlightKeyRef.current);
+          }
         }}
+        onMomentumScrollEnd={flushPendingShapeHighlight}
+        onScrollEndDrag={flushPendingShapeHighlight}
         scrollEventThrottle={16}
-      >
-        {orderedChordEntries.map(({ definition, chordId }) => {
+        renderItem={({ item }) => {
+          const { definition, chordId } = item;
           const diatonicOptions = CHORD_QUALITY_DIATONIC_MAP[definition.quality] || [];
           const hasDiatonic = diatonicOptions.length > 0;
           const activeDiatonic = selectedDiatonic[chordId] || diatonicOptions[0];
@@ -204,7 +312,6 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
 
           return (
             <View
-              key={chordId}
               style={styles.card}
               onLayout={(event) => {
                 qualityOffsetsRef.current[chordId] = event.nativeEvent.layout.y;
@@ -213,7 +320,13 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
                 }
 
                 if (pendingScrollTarget?.chordId === chordId || (!pendingScrollTarget?.chordId && pendingScrollTarget?.quality === definition.quality)) {
-                  scrollRef.current?.scrollTo({ y: Math.max(0, event.nativeEvent.layout.y - 10), animated: true });
+                  scrollRef.current?.scrollToOffset({ offset: Math.max(0, event.nativeEvent.layout.y - 10), animated: true });
+                  const targetShapeKey = pendingScrollTarget
+                    ? buildShapeCellKeyFromTarget(pendingScrollTarget)
+                    : null;
+                  if (targetShapeKey) {
+                    queueShapeHighlightAfterScrollSettle(targetShapeKey);
+                  }
                   setPendingScrollTarget(null);
                 }
               }}
@@ -271,6 +384,12 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
                   const selectedRootVoicing = selectedVoicingByRoot[voicingSelectionKey];
                   const activeOption = rootStringOptions.find((option) => option.rootVoicing === selectedRootVoicing) ?? rootStringOptions[0];
                   const preview = buildShapeSheetPreview(activeOption.shape, actualRootPitch, useGalleryColors);
+                  const activeShapeCellKey = buildGalleryShapeCellKey(
+                    chordId,
+                    rootString,
+                    activeOption.rootVoicing,
+                    activeOption.shapeIndex,
+                  );
 
                   return (
                     <View key={`${chordId}-${rootString}`} style={styles.shapeColumn}>
@@ -301,7 +420,10 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
                       )}
 
                       <Pressable
-                        style={styles.shapeCard}
+                        style={[
+                          styles.shapeCard,
+                          highlightedShapeCellKey === activeShapeCellKey ? styles.shapeCardFocused : null,
+                        ]}
                         onPress={() => {
                           onOpenSandbox?.({
                             chordId,
@@ -310,6 +432,7 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
                             rootVoicing: activeOption.rootVoicing,
                             shapeIndex: activeOption.shapeIndex,
                             fretOffset: preview.rootFret,
+                            focusLibrary: true,
                           });
                         }}
                       >
@@ -329,10 +452,9 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
               </View>
             </View>
           );
-        })}
-
-        <LegendPanel variant="large" />
-      </ScrollView>
+        }}
+        ListFooterComponent={<LegendPanel variant="large" />}
+      />
 
       <Modal visible={isMenuOpen} animationType="fade" transparent onRequestClose={() => setIsMenuOpen(false)}>
         <View style={styles.floatingMenuBackdrop}>
@@ -378,7 +500,7 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
                   key={chordId}
                   style={styles.modalListItem}
                   onPress={() => {
-                    scrollToQuality(definition.quality, chordId);
+                    scrollToQuality({ quality: definition.quality, chordId });
                     setIsChordListOpen(false);
                   }}
                 >
@@ -476,46 +598,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
   },
-  floatingMenuBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.35)',
-    justifyContent: 'flex-start',
-    paddingTop: 48,
-    paddingHorizontal: 10,
-  },
-  floatingMenuSheet: {
-    maxHeight: '80%',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
+  
+  
   floatingMenuSheetContent: {
     gap: 10,
     paddingBottom: 10,
   },
-  floatingMenuHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  floatingMenuTitle: {
-    color: '#0f172a',
-    fontSize: 12,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  floatingMenuClose: {
-    color: '#64748b',
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.7,
-  },
+  
+  
+  
   floatingMenuRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -528,38 +619,11 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.7,
   },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.55)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    maxHeight: '88%',
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 24,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  modalTitle: {
-    color: '#0f172a',
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  modalClose: {
-    color: '#475569',
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
+  
+  
+  
+  
+  
   searchInput: {
     borderWidth: 1,
     borderColor: '#cbd5e1',
@@ -720,6 +784,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     alignItems: 'center',
     gap: 6,
+  },
+  shapeCardFocused: {
+    borderColor: '#f59e0b',
+    borderWidth: 2,
+    backgroundColor: '#fffbeb',
   },
   voicingChipRow: {
     flexDirection: 'row',

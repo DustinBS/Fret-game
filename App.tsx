@@ -143,7 +143,13 @@ function App() {
       {activeTab === 'SANDBOX' && <SandboxMode />}
       {activeTab === 'QUIZ' && <ChordQuizMode />}
       {activeTab === 'GALLERY' && <GalleryMode keyConstraint={globalKey} setKeyConstraint={setGlobalKey} useGalleryColors={useGalleryColors} />}
-      {activeTab === 'VISUAL_ARCHETYPE' && <VisualArchetypeMode keyConstraint={globalKey} useGalleryColors={useGalleryColors} />}
+      {activeTab === 'VISUAL_ARCHETYPE' && (
+        <VisualArchetypeMode
+          keyConstraint={globalKey}
+          useGalleryColors={useGalleryColors}
+          setKeyConstraint={setGlobalKey}
+        />
+      )}
     </div>
   );
 }

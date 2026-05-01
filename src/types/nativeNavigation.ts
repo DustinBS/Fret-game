@@ -5,10 +5,23 @@ export interface ShapePresetRequest {
   chordId?: string;
   rootVoicing?: string;
   shapeIndex?: number;
+  focusLibrary?: boolean;
 }
 
 export interface GalleryJumpRequest {
-  key: string;
+  key?: string;
   quality: string;
   chordId?: string;
+  rootString?: number;
+  rootVoicing?: string;
+  shapeIndex?: number;
+}
+
+export interface VisualArchetypeJumpRequest {
+  key?: string;
+  quality: string;
+  chordId?: string;
+  rootString?: number;
+  rootVoicing?: string;
+  shapeIndex?: number;
 }

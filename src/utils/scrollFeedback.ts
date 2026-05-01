@@ -1,3 +1,12 @@
+import {
+  NAVIGATION_OUTLINE_ACCENT_RGB,
+  NAVIGATION_OUTLINE_CLEANUP_BUFFER_MS,
+  NAVIGATION_OUTLINE_FADE_MS,
+  NAVIGATION_OUTLINE_HOLD_MS,
+  NAVIGATION_SCROLL_POST_SETTLE_BUFFER_MS,
+  NAVIGATION_SCROLL_SETTLE_IDLE_MS,
+} from './navigationFeedback';
+
 type ScrollFlashFn = (target: HTMLElement) => void;
 
 interface ScrollAndFlashOptions {
@@ -10,7 +19,26 @@ interface ScrollAndFlashOptions {
   settleTimeoutMs?: number;
 }
 
+interface MultiTargetScrollAndFlashOptions {
+  targets: Array<{
+    container: HTMLElement;
+    target: HTMLElement;
+    flashTarget: ScrollFlashFn;
+  }>;
+  postSettleBufferMs?: number;
+  postSettleDelayMs?: number;
+  settleIdleMs?: number;
+  settleTimeoutMs?: number;
+  onReadyToFlash?: () => void;
+}
+
 interface OutlineFlashOptions {
+  thicknessPx?: number;
+  holdMs?: number;
+  fadeMs?: number;
+}
+
+interface InsetRingFlashOptions {
   thicknessPx?: number;
   holdMs?: number;
   fadeMs?: number;
@@ -36,17 +64,24 @@ interface OverlayFlashState {
   cleanupTimer?: number;
 }
 
-const DEFAULT_POST_SETTLE_BUFFER_MS = 100;
-const DEFAULT_SETTLE_IDLE_MS = 140;
+interface InsetRingFlashState {
+  prevBoxShadow: string;
+  prevTransition: string;
+  fadeTimer?: number;
+  cleanupTimer?: number;
+}
+
+const DEFAULT_POST_SETTLE_BUFFER_MS = NAVIGATION_SCROLL_POST_SETTLE_BUFFER_MS;
+const DEFAULT_SETTLE_IDLE_MS = NAVIGATION_SCROLL_SETTLE_IDLE_MS;
 const DEFAULT_SETTLE_TIMEOUT_MS = 3200;
 const DEFAULT_NO_MOVEMENT_GRACE_MS = 220;
 const NO_MOVEMENT_VISIBILITY_RATIO = 0.55;
 const TARGET_MOTION_EPSILON_PX = 0.1;
-const FLASH_BLUE_RGB = '37, 99, 235';
 
 const containerSequenceMap = new WeakMap<HTMLElement, number>();
 const outlineFlashStateMap = new WeakMap<HTMLElement, OutlineFlashState>();
 const overlayFlashStateMap = new WeakMap<HTMLElement, OverlayFlashState>();
+const insetRingFlashStateMap = new WeakMap<HTMLElement, InsetRingFlashState>();
 
 function waitForScrollSettled(
   container: HTMLElement,
@@ -136,6 +171,16 @@ function isLatestSequence(container: HTMLElement, sequence: number): boolean {
   return containerSequenceMap.get(container) === sequence;
 }
 
+function areContainerSequencesLatest(sequenceByContainer: Map<HTMLElement, number>): boolean {
+  for (const [container, sequence] of sequenceByContainer.entries()) {
+    if (!isLatestSequence(container, sequence)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function clearOutlineFlashState(target: HTMLElement): void {
   const state = outlineFlashStateMap.get(target);
   if (!state) {
@@ -167,26 +212,66 @@ function clearOverlayFlashState(row: HTMLElement): void {
   overlayFlashStateMap.delete(row);
 }
 
-export function scrollToTargetAndFlash({
-  container,
-  target,
-  flashTarget,
+function clearInsetRingFlashState(target: HTMLElement): void {
+  const state = insetRingFlashStateMap.get(target);
+  if (!state) {
+    return;
+  }
+
+  clearTimer(state.fadeTimer);
+  clearTimer(state.cleanupTimer);
+
+  target.style.boxShadow = state.prevBoxShadow;
+  target.style.transition = state.prevTransition;
+  insetRingFlashStateMap.delete(target);
+}
+
+export function scrollToTargetsAndFlashTogether({
+  targets,
   postSettleBufferMs,
   postSettleDelayMs,
   settleIdleMs = DEFAULT_SETTLE_IDLE_MS,
   settleTimeoutMs = DEFAULT_SETTLE_TIMEOUT_MS,
-}: ScrollAndFlashOptions): void {
+  onReadyToFlash,
+}: MultiTargetScrollAndFlashOptions): void {
+  if (targets.length === 0) {
+    return;
+  }
+
+  // One scroll target per container keeps this utility deterministic and
+  // allows us to synchronize flashing by waiting on all involved containers.
+  const uniqueByContainer = new Map<HTMLElement, MultiTargetScrollAndFlashOptions['targets'][number]>();
+  targets.forEach((entry) => {
+    uniqueByContainer.set(entry.container, entry);
+  });
+
+  const activeTargets = Array.from(uniqueByContainer.values()).filter(
+    (entry) => entry.container.isConnected && entry.target.isConnected,
+  );
+
+  if (activeTargets.length === 0) {
+    return;
+  }
+
   const settleBufferMs = Math.max(
     0,
     postSettleBufferMs ?? postSettleDelayMs ?? DEFAULT_POST_SETTLE_BUFFER_MS,
   );
-  const nextSequence = (containerSequenceMap.get(container) ?? 0) + 1;
-  containerSequenceMap.set(container, nextSequence);
+  const sequenceByContainer = new Map<HTMLElement, number>();
 
-  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  activeTargets.forEach(({ container, target }) => {
+    const nextSequence = (containerSequenceMap.get(container) ?? 0) + 1;
+    containerSequenceMap.set(container, nextSequence);
+    sequenceByContainer.set(container, nextSequence);
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
 
-  void waitForScrollSettled(container, target, settleIdleMs, settleTimeoutMs).then(async () => {
-    if (!isLatestSequence(container, nextSequence)) {
+  void Promise.all(
+    activeTargets.map(({ container, target }) =>
+      waitForScrollSettled(container, target, settleIdleMs, settleTimeoutMs),
+    ),
+  ).then(async () => {
+    if (!areContainerSequencesLatest(sequenceByContainer)) {
       return;
     }
 
@@ -194,11 +279,37 @@ export function scrollToTargetAndFlash({
       await wait(settleBufferMs);
     }
 
-    if (!isLatestSequence(container, nextSequence) || !target.isConnected) {
+    if (!areContainerSequencesLatest(sequenceByContainer)) {
       return;
     }
 
-    flashTarget(target);
+    onReadyToFlash?.();
+
+    activeTargets.forEach(({ target, flashTarget }) => {
+      if (!target.isConnected) {
+        return;
+      }
+
+      flashTarget(target);
+    });
+  });
+}
+
+export function scrollToTargetAndFlash({
+  container,
+  target,
+  flashTarget,
+  postSettleBufferMs,
+  postSettleDelayMs,
+  settleIdleMs,
+  settleTimeoutMs,
+}: ScrollAndFlashOptions): void {
+  scrollToTargetsAndFlashTogether({
+    targets: [{ container, target, flashTarget }],
+    postSettleBufferMs,
+    postSettleDelayMs,
+    settleIdleMs,
+    settleTimeoutMs,
   });
 }
 
@@ -213,29 +324,55 @@ export function flashElementOutline(target: HTMLElement, options: OutlineFlashOp
   outlineFlashStateMap.set(target, state);
 
   const thicknessPx = options.thicknessPx ?? 6;
-  const holdMs = options.holdMs ?? 180;
-  const fadeMs = options.fadeMs ?? 640;
+  const holdMs = options.holdMs ?? NAVIGATION_OUTLINE_HOLD_MS;
+  const fadeMs = options.fadeMs ?? NAVIGATION_OUTLINE_FADE_MS;
 
   target.style.transition = 'outline-color 0ms linear';
-  target.style.outline = `${thicknessPx}px solid rgba(${FLASH_BLUE_RGB}, 0.95)`;
+  target.style.outline = `${thicknessPx}px solid rgba(${NAVIGATION_OUTLINE_ACCENT_RGB}, 0.95)`;
   target.style.outlineOffset = '2px';
 
   state.fadeTimer = window.setTimeout(() => {
     target.style.transition = `outline-color ${fadeMs}ms ease-out`;
-    target.style.outlineColor = `rgba(${FLASH_BLUE_RGB}, 0)`;
+    target.style.outlineColor = `rgba(${NAVIGATION_OUTLINE_ACCENT_RGB}, 0)`;
   }, holdMs);
 
   state.cleanupTimer = window.setTimeout(() => {
     clearOutlineFlashState(target);
-  }, holdMs + fadeMs + 80);
+  }, holdMs + fadeMs + NAVIGATION_OUTLINE_CLEANUP_BUFFER_MS);
+}
+
+export function flashElementInsetRing(target: HTMLElement, options: InsetRingFlashOptions = {}): void {
+  clearInsetRingFlashState(target);
+
+  const state: InsetRingFlashState = {
+    prevBoxShadow: target.style.boxShadow,
+    prevTransition: target.style.transition,
+  };
+  insetRingFlashStateMap.set(target, state);
+
+  const thicknessPx = options.thicknessPx ?? 2;
+  const holdMs = options.holdMs ?? NAVIGATION_OUTLINE_HOLD_MS;
+  const fadeMs = options.fadeMs ?? NAVIGATION_OUTLINE_FADE_MS;
+
+  target.style.transition = 'box-shadow 0ms linear';
+  target.style.boxShadow = `inset 0 0 0 ${thicknessPx}px rgba(${NAVIGATION_OUTLINE_ACCENT_RGB}, 0.95)`;
+
+  state.fadeTimer = window.setTimeout(() => {
+    target.style.transition = `box-shadow ${fadeMs}ms ease-out`;
+    target.style.boxShadow = `inset 0 0 0 ${thicknessPx}px rgba(${NAVIGATION_OUTLINE_ACCENT_RGB}, 0)`;
+  }, holdMs);
+
+  state.cleanupTimer = window.setTimeout(() => {
+    clearInsetRingFlashState(target);
+  }, holdMs + fadeMs + NAVIGATION_OUTLINE_CLEANUP_BUFFER_MS);
 }
 
 export function flashTableRowOverlay(row: HTMLElement, options: TableRowFlashOptions = {}): void {
   clearOverlayFlashState(row);
 
   const thicknessPx = options.thicknessPx ?? 5;
-  const holdMs = options.holdMs ?? 180;
-  const fadeMs = options.fadeMs ?? 640;
+  const holdMs = options.holdMs ?? NAVIGATION_OUTLINE_HOLD_MS;
+  const fadeMs = options.fadeMs ?? NAVIGATION_OUTLINE_FADE_MS;
 
   const firstCell = row.querySelector<HTMLElement>('td:first-child');
   if (!firstCell) return;
@@ -258,7 +395,7 @@ export function flashTableRowOverlay(row: HTMLElement, options: TableRowFlashOpt
   overlay.style.height = `${height}px`;
   overlay.style.pointerEvents = 'none';
   overlay.style.boxSizing = 'border-box';
-  overlay.style.border = `${thicknessPx}px solid rgba(${FLASH_BLUE_RGB}, 0.95)`;
+  overlay.style.border = `${thicknessPx}px solid rgba(${NAVIGATION_OUTLINE_ACCENT_RGB}, 0.95)`;
   overlay.style.borderRadius = '6px';
   overlay.style.zIndex = '99999';
   overlay.style.transition = `opacity ${fadeMs}ms ease-out`;
@@ -275,5 +412,5 @@ export function flashTableRowOverlay(row: HTMLElement, options: TableRowFlashOpt
 
   state.cleanupTimer = window.setTimeout(() => {
     clearOverlayFlashState(row);
-  }, holdMs + fadeMs + 80);
+  }, holdMs + fadeMs + NAVIGATION_OUTLINE_CLEANUP_BUFFER_MS);
 }

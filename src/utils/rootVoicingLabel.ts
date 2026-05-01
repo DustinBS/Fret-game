@@ -18,6 +18,15 @@ export function getRootVoicingArchetype(value: string): string {
   return match ? match[0] : '';
 }
 
+export function buildLooseRootVoicingLabel(value: string): string {
+  const archetype = getRootVoicingArchetype(value);
+  if (archetype) {
+    return archetype;
+  }
+
+  return value.trim().toUpperCase();
+}
+
 function normalizeRootVoicingLabel(value: string): string {
   return value.trim().toUpperCase();
 }

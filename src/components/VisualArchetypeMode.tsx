@@ -1,10 +1,10 @@
-import React, { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import SheetMusic from './SheetMusic';
 import { LegendPanel } from './LegendPanel';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
 import { CHORD_QUALITY_DIATONIC_MAP, DIATONIC_INTERVALS } from '../utils/diatonic';
-import { getKeySignatureInfo, getNoteNameFromPitchClass, keySignatureUsesFlats } from '../utils/musicTheory';
-import { flashElementOutline, scrollToTargetAndFlash } from '../utils/scrollFeedback';
+import { getKeySignatureInfo, getNoteNameFromPitchClass, KEY_CONSTRAINT_OPTIONS, keySignatureUsesFlats } from '../utils/musicTheory';
+import { flashElementInsetRing, flashElementOutline, scrollToTargetsAndFlashTogether } from '../utils/scrollFeedback';
 import { buildSearchWithUpdates, navigateFromClick, preventMiddleMouseDefault } from '../utils/queryNavigation';
 import { buildShapeSheetPreview, resolveRootFretForShape } from '../utils/chordShapeRendering';
 import { buildFingeringOffsetArray } from '../utils/chordVoicing';
@@ -19,8 +19,13 @@ import {
   writeSessionString,
 } from '../utils/viewState';
 import { buildVisualArchetypeGroups, type VisualArchetypeGroup, type VisualArchetypeMember } from '../utils/visualArchetypes';
+import {
+  getVisualGroupDiatonicOptions,
+  resolveVisualDiatonicOutlineTargetsForTarget,
+  resolveVisualDiatonicSelectionForTarget,
+  type VisualDiatonicOutlineTarget,
+} from '../utils/visualArchetypeNavigation';
 
-const DIATONIC_DISPLAY_ORDER = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'viio'];
 const VISUAL_ROOT_FILTER_KEY = 'fret-visual-root-filter';
 const VISUAL_CHORD_SEARCH_KEY = 'fret-visual-chord-search';
 const VISUAL_SELECTED_DIATONIC_KEY = 'fret-visual-selected-diatonic';
@@ -40,22 +45,15 @@ function parseRootStringFilter(value: string | null): RootStringFilter {
 interface VisualArchetypeModeProps {
   keyConstraint: string;
   useGalleryColors: boolean;
+  setKeyConstraint?: (next: string) => void;
 }
 
-function getGroupDiatonicOptions(group: VisualArchetypeGroup): string[] {
-  const diatonicSet = new Set<string>();
-  group.members.forEach((member) => {
-    const options = CHORD_QUALITY_DIATONIC_MAP[member.quality] || [];
-    options.forEach((option) => diatonicSet.add(option));
-  });
-
-  return Array.from(diatonicSet).sort((a, b) => {
-    const aIdx = DIATONIC_DISPLAY_ORDER.indexOf(a);
-    const bIdx = DIATONIC_DISPLAY_ORDER.indexOf(b);
-    const aa = aIdx === -1 ? Number.MAX_SAFE_INTEGER : aIdx;
-    const bb = bIdx === -1 ? Number.MAX_SAFE_INTEGER : bIdx;
-    return aa - bb;
-  });
+interface VisualDeepLinkTarget {
+  quality: string;
+  chordId?: string;
+  rootString?: number;
+  rootVoicing?: string;
+  shapeIndex?: number;
 }
 
 function getActiveMemberForDiatonic(
@@ -90,7 +88,7 @@ function getActiveMemberForDiatonic(
   return candidates[0];
 }
 
-const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint, useGalleryColors }) => {
+const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint, useGalleryColors, setKeyConstraint }) => {
   const [rootStringFilter, setRootStringFilter] = useState<RootStringFilter>(() => {
     return parseRootStringFilter(readSessionString(VISUAL_ROOT_FILTER_KEY, 'ALL'));
   });
@@ -98,6 +96,8 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
     () => readSessionJson<Record<string, string>>(VISUAL_SELECTED_DIATONIC_KEY, {}),
   );
   const [chordSearch, setChordSearch] = useState(() => readSessionString(VISUAL_CHORD_SEARCH_KEY, ''));
+  const [pendingDeepLinkTarget, setPendingDeepLinkTarget] = useState<VisualDeepLinkTarget | null>(null);
+  const pendingDiatonicOutlineTargetsRef = useRef<VisualDiatonicOutlineTarget[] | null>(null);
   const scrollContainerRef = useRef<HTMLElement>(null);
   const chordListRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -159,6 +159,39 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
     writeSessionJson(VISUAL_SELECTED_DIATONIC_KEY, selectedDiatonicByGroup);
   }, [selectedDiatonicByGroup]);
 
+  const applyPendingDiatonicOutlineTargets = useCallback(() => {
+    const pendingTargets = pendingDiatonicOutlineTargetsRef.current;
+    pendingDiatonicOutlineTargetsRef.current = null;
+
+    if (!pendingTargets || pendingTargets.length === 0) {
+      return;
+    }
+
+    const mainContainer = scrollContainerRef.current;
+    if (!mainContainer) {
+      return;
+    }
+
+    const segmentButtons = Array.from(
+      mainContainer.querySelectorAll<HTMLButtonElement>('button[data-visual-diatonic-group][data-visual-diatonic-option]'),
+    );
+
+    pendingTargets.forEach((targetEntry) => {
+      targetEntry.options.forEach((option) => {
+        const button = segmentButtons.find((candidate) => {
+          return (
+            candidate.dataset.visualDiatonicGroup === targetEntry.groupKey
+            && candidate.dataset.visualDiatonicOption === option
+          );
+        });
+
+        if (button) {
+          flashElementInsetRing(button, { thicknessPx: 2 });
+        }
+      });
+    });
+  }, []);
+
   useLayoutEffect(() => {
     const cleanupFns: Array<() => void> = [];
 
@@ -185,9 +218,80 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
     };
   }, []);
 
-  const scrollToQuality = (quality: string, chordId?: string) => {
+  const scrollToQuality = useCallback((target: VisualDeepLinkTarget): boolean => {
     if (!scrollContainerRef.current) {
-      return;
+      return false;
+    }
+
+    const { quality, chordId, rootString, rootVoicing, shapeIndex } = target;
+    const listContainer = chordListRef.current;
+    const listTargetButton = listContainer
+      ? Array.from(
+        listContainer.querySelectorAll<HTMLButtonElement>('button[data-chord-list-entry="visual-archetype"]'),
+      ).find((button) => {
+        if (chordId) {
+          return button.dataset.chordId === chordId;
+        }
+
+        return button.dataset.quality === quality;
+      }) ?? null
+      : null;
+
+    const buildSynchronizedFlashTargets = (
+      mainTarget: HTMLElement,
+      mainFlashTarget: (targetElement: HTMLElement) => void,
+    ) => {
+      const flashTargets = [{
+        container: scrollContainerRef.current as HTMLElement,
+        target: mainTarget,
+        flashTarget: mainFlashTarget,
+      }];
+
+      if (listContainer && listTargetButton) {
+        flashTargets.push({
+          container: listContainer,
+          target: listTargetButton,
+          flashTarget: (listTarget: HTMLElement) =>
+            flashElementOutline(listTarget, { thicknessPx: 3, holdMs: 160 }),
+        });
+      }
+
+      return flashTargets;
+    };
+
+    if (chordId && (rootString !== undefined || rootVoicing || shapeIndex !== undefined)) {
+      const memberButtons = Array.from(
+        scrollContainerRef.current.querySelectorAll<HTMLButtonElement>('button[data-scroll-cell="visual-archetype"]'),
+      );
+      const targetMember = memberButtons.find((button) => {
+        if (button.dataset.chordId !== chordId) {
+          return false;
+        }
+
+        if (rootString !== undefined && Number(button.dataset.rootString) !== rootString) {
+          return false;
+        }
+
+        if (rootVoicing && button.dataset.rootVoicing !== rootVoicing) {
+          return false;
+        }
+
+        if (shapeIndex !== undefined && Number(button.dataset.shapeIndex) !== shapeIndex) {
+          return false;
+        }
+
+        return true;
+      });
+
+      if (targetMember) {
+        scrollToTargetsAndFlashTogether({
+          targets: buildSynchronizedFlashTargets(targetMember, (flashTarget) =>
+            flashElementOutline(flashTarget, { thicknessPx: 4 }),
+          ),
+          onReadyToFlash: applyPendingDiatonicOutlineTargets,
+        });
+        return true;
+      }
     }
 
     const rows = Array.from(scrollContainerRef.current.querySelectorAll('section[data-qualities]'));
@@ -202,14 +306,112 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
       return qualities.split(' ').includes(quality);
     });
 
-    if (targetRow) {
-      scrollToTargetAndFlash({
-        container: scrollContainerRef.current,
-        target: targetRow as HTMLElement,
-        flashTarget: (target) => flashElementOutline(target, { thicknessPx: 4 }),
-      });
+    if (!targetRow) {
+      return false;
     }
-  };
+
+    scrollToTargetsAndFlashTogether({
+      targets: buildSynchronizedFlashTargets(targetRow as HTMLElement, (rowTarget) =>
+        flashElementOutline(rowTarget, { thicknessPx: 4 }),
+      ),
+      onReadyToFlash: applyPendingDiatonicOutlineTargets,
+    });
+
+    return true;
+  }, [applyPendingDiatonicOutlineTargets]);
+
+  useEffect(() => {
+    if (!pendingDeepLinkTarget) {
+      return;
+    }
+
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 24;
+
+    // Visual Archetype sections can lag first paint due notation + grouping. Retry until
+    // target mounts so deep links remain reliable when arriving cross-tab from Sandbox.
+    const tryScroll = () => {
+      if (cancelled) {
+        return;
+      }
+
+      const didScroll = scrollToQuality(pendingDeepLinkTarget);
+      if (didScroll) {
+        setPendingDeepLinkTarget(null);
+        return;
+      }
+
+      attempts += 1;
+      if (attempts < maxAttempts) {
+        window.requestAnimationFrame(tryScroll);
+      }
+    };
+
+    tryScroll();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingDeepLinkTarget, scrollToQuality]);
+
+  useEffect(() => {
+    const handleUrlState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab')?.toLowerCase();
+      if (!tab || !['visual', 'visualarchetype', 'visual-archetype', 'visual_archetype'].includes(tab)) {
+        return;
+      }
+
+      const key = params.get('key');
+      if (setKeyConstraint && key && KEY_CONSTRAINT_OPTIONS.includes(key)) {
+        setKeyConstraint(key);
+      }
+
+      const scrollTo = params.get('scrollTo');
+      const scrollToId = params.get('scrollToId');
+      const scrollToRootStringToken = params.get('scrollToRootString');
+      const parsedScrollToRootString = Number.parseInt(scrollToRootStringToken ?? '', 10);
+      const scrollToRootString = Number.isFinite(parsedScrollToRootString)
+        ? parsedScrollToRootString
+        : undefined;
+      const scrollToShapeIndexToken = params.get('scrollToShapeIndex');
+      const parsedScrollToShapeIndex = Number.parseInt(scrollToShapeIndexToken ?? '', 10);
+      const scrollToShapeIndex = Number.isFinite(parsedScrollToShapeIndex)
+        ? parsedScrollToShapeIndex
+        : undefined;
+      const scrollToRootVoicing = params.get('scrollToRootVoicing') ?? undefined;
+      if (scrollTo || scrollToId) {
+        const deepLinkTarget: VisualDeepLinkTarget = {
+          quality: scrollTo ?? '',
+          chordId: scrollToId ?? undefined,
+          rootString: scrollToRootString,
+          rootVoicing: scrollToRootVoicing,
+          shapeIndex: scrollToShapeIndex,
+        };
+
+        setRootStringFilter((prev) => (prev === 'ALL' ? prev : 'ALL'));
+        setSelectedDiatonicByGroup((prev) =>
+          resolveVisualDiatonicSelectionForTarget(groups, deepLinkTarget, prev),
+        );
+        pendingDiatonicOutlineTargetsRef.current = resolveVisualDiatonicOutlineTargetsForTarget(groups, deepLinkTarget);
+        setPendingDeepLinkTarget(deepLinkTarget);
+
+        params.delete('scrollTo');
+        params.delete('scrollToId');
+        params.delete('scrollToRootString');
+        params.delete('scrollToRootVoicing');
+        params.delete('scrollToShapeIndex');
+        window.history.replaceState({}, '', `?${params.toString()}`);
+      }
+    };
+
+    handleUrlState();
+    window.addEventListener('popstate', handleUrlState);
+    return () => {
+      window.removeEventListener('popstate', handleUrlState);
+    };
+  }, [groups, setKeyConstraint, scrollToQuality]);
 
   const handleContentScroll = (e: React.UIEvent<HTMLElement>) => {
     writeSessionNumber(VISUAL_CONTENT_SCROLL_KEY, e.currentTarget.scrollTop);
@@ -229,6 +431,9 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
       tab: 'sandbox',
       chordId: member.chordId,
       quality: member.quality,
+      scrollTo: member.quality,
+      scrollToId: member.chordId,
+      focusLibrary: '1',
       rootString: member.rootString.toString(),
       rootVoicing: member.rootVoicing,
       shapeIndex: member.shapeIndex.toString(),
@@ -294,9 +499,12 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
               return (
                 <button
                   key={chordId}
+                  data-chord-list-entry="visual-archetype"
+                  data-chord-id={chordId}
+                  data-quality={definition.quality}
                   onClick={() => {
                     if (isAvailable) {
-                      scrollToQuality(definition.quality, chordId);
+                      scrollToQuality({ quality: definition.quality, chordId });
                     }
                   }}
                   disabled={!isAvailable}
@@ -320,7 +528,7 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
             </div>
           ) : (
             filteredGroups.map((group) => {
-              const diatonicOptions = getGroupDiatonicOptions(group);
+                const diatonicOptions = getVisualGroupDiatonicOptions(group);
               const activeDiatonic = diatonicOptions.length > 0
                 ? (selectedDiatonicByGroup[group.impliedVisualKey] || diatonicOptions[0])
                 : null;
@@ -366,6 +574,8 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
                               {diatonicOptions.map((option) => (
                                 <button
                                   key={option}
+                                  data-visual-diatonic-group={group.impliedVisualKey}
+                                  data-visual-diatonic-option={option}
                                   onClick={() => setSelectedDiatonicByGroup((prev) => ({ ...prev, [group.impliedVisualKey]: option }))}
                                   className={`px-2 py-1 text-[11px] font-bold tracking-wider border-r last:border-r-0 ${activeDiatonic === option ? 'bg-blue-600 text-white border-blue-600' : 'text-slate-700 hover:bg-slate-100 border-slate-300'}`}
                                 >
@@ -393,6 +603,11 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({ keyConstraint
                           return (
                             <button
                               key={`${member.chordId}-${member.rootString}-${member.shapeIndex}`}
+                              data-scroll-cell="visual-archetype"
+                              data-chord-id={member.chordId}
+                              data-root-string={member.rootString.toString()}
+                              data-root-voicing={member.rootVoicing}
+                              data-shape-index={member.shapeIndex.toString()}
                               onClick={(event) => openInSandbox(event, member, previewRootPitchClass)}
                               onAuxClick={(event) => openInSandbox(event, member, previewRootPitchClass)}
                               onMouseDown={preventMiddleMouseDefault}

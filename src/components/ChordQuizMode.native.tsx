@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { QUIZ_ROOT_STRING_OPTIONS, useChordQuiz } from '../hooks/useChordQuiz';
 import { getIntervalColor, getIntervalHexColor, getNoteNameFromPitchClass } from '../utils/musicTheory';
 import { Fretboard, type FretMarker } from './Fretboard';
@@ -32,7 +32,6 @@ const ChordQuizMode: React.FC = () => {
     submitGuess,
   } = useChordQuiz();
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!quizData) {
@@ -59,239 +58,227 @@ const ChordQuizMode: React.FC = () => {
     : [];
 
   const revealVoicingParts = buildRootVoicingDisplayParts(quizData.rootString, quizData.rootVoicing);
+  const shouldShowVoicingReveal = gameState === 'REVEALED' || showVoicingHint;
 
   return (
     <View style={styles.screen}>
-      <View style={styles.tinyHeader}>
-        <Pressable
-          onPress={() => {
-            if (gameState === 'PLAYING') {
-              setGameState('REVEALED');
-            } else {
-              generateQuiz();
-            }
-          }}
-          style={[styles.headerButton, gameState === 'REVEALED' ? styles.headerButtonActive : null]}
-        >
-          <Text style={[styles.headerButtonText, gameState === 'REVEALED' ? styles.headerButtonTextActive : null]}>
-            {gameState === 'PLAYING' ? 'Actual Answer' : 'Next Round'}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={() => setIsSubmitModalOpen(true)}
-          style={[styles.headerButton, styles.submitHeaderButton]}
-        >
-          <Text style={[styles.headerButtonText, styles.submitHeaderButtonText]}>
-            Submit Answer
-          </Text>
-        </Pressable>
-
-        <Pressable onPress={() => setIsMenuOpen(true)} style={styles.menuButton}>
-          <Text style={styles.menuButtonText}>☰</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.body}>
-        <SheetFretSplit
-          modeKey="QUIZ"
-          sheetTitle="Quiz Sheet"
-          sheetContent={
-            <View style={styles.sheetPaneContent}>
-              <View style={styles.sheetCard}>
-                <SheetMusic
-                  notes={quizData.activePitches}
-                  colors={gameState === 'REVEALED'
-                    ? quizData.shape.offsets.map((offsetDef) => getIntervalHexColor(offsetDef.interval || '1'))
-                    : quizData.activePitches.map(() => '#334155')}
-                  gameMode="SANDBOX"
-                  useFlats={quizData.useFlats}
-                />
-              </View>
-
-              <View style={[styles.revealPanel, gameState === 'REVEALED' ? styles.revealPanelVisible : styles.revealPanelHidden]}>
-                <Text style={styles.revealName}>
-                  {getNoteNameFromPitchClass(quizData.rootPitchClass, quizData.useFlats)} {gameState === 'REVEALED' ? quizData.quality : '—'}
-                </Text>
-                <Text style={styles.revealSubtitle}>
-                  {gameState === 'REVEALED' ? 'Exact Reveal' : 'Shape / Voicing'}
-                </Text>
-                <Text style={styles.revealVoicing}>
-                  {gameState === 'REVEALED' ? `Shape: ${revealVoicingParts.baseLabel} | Voicing: ` : 'Shape: ? | Voicing: ?'}
-                  {gameState === 'REVEALED' ? <Text style={styles.revealVoicingToken}>{quizData.rootVoicing}</Text> : null}
-                </Text>
-              </View>
-
-              <Text style={styles.constraintSummary}>Root Strings: {rootStringConstraintLabel}</Text>
-            </View>
-          }
-          fretboardContent={
-            <Fretboard
-              numFrets={25}
-              windowStart={Math.max(0, quizData.rootFret - 2)}
-              windowEnd={quizData.rootFret + 4}
-              markers={markers}
-              onFretClick={() => {}}
-            />
-          }
-        />
-      </View>
-
-      <Modal visible={isMenuOpen} animationType="fade" transparent onRequestClose={() => setIsMenuOpen(false)}>
-        <View style={styles.menuBackdrop}>
-          <View style={styles.menuSheet}>
-            <ScrollView contentContainerStyle={styles.menuSheetContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.menuHeader}>
-                <Text style={styles.menuTitle}>Root String Constraints</Text>
-                <Pressable onPress={() => setIsMenuOpen(false)} hitSlop={8}>
-                  <Text style={styles.menuClose}>Close</Text>
+      <View style={styles.sideRail}>
+        <ScrollView contentContainerStyle={styles.sideRailContent} showsVerticalScrollIndicator={false}>
+          <Text style={styles.sideRailTitle}>Root Strings</Text>
+          <View style={styles.constraintRow}>
+            {QUIZ_ROOT_STRING_OPTIONS.map((rootString) => {
+              const checked = enabledRootStrings.includes(rootString);
+              return (
+                <Pressable
+                  key={rootString}
+                  style={[styles.constraintButton, checked ? styles.constraintButtonActive : null]}
+                  onPress={() => toggleRootStringConstraint(rootString)}
+                >
+                  <Text style={[styles.constraintText, checked ? styles.constraintTextActive : null]}>Str {5 - rootString + 1}</Text>
                 </Pressable>
-              </View>
+              );
+            })}
+          </View>
 
-              <View style={styles.constraintRow}>
-                {QUIZ_ROOT_STRING_OPTIONS.map((rootString) => {
-                  const checked = enabledRootStrings.includes(rootString);
-                  return (
-                    <Pressable
-                      key={rootString}
-                      style={[styles.constraintButton, checked ? styles.constraintButtonActive : null]}
-                      onPress={() => toggleRootStringConstraint(rootString)}
-                    >
-                      <Text style={[styles.constraintText, checked ? styles.constraintTextActive : null]}>Str {rootString + 1}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+          <View style={styles.inputGroup}>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>Root Note</Text>
+              <Pressable
+                onPress={() => setShowRootHint((prev) => !prev)}
+                style={[styles.hintToggle, showRootHint ? styles.hintToggleActive : null]}
+              >
+                <Text style={[styles.hintToggleText, showRootHint ? styles.hintToggleTextActive : null]}>
+                  Hint: {showRootHint ? 'On' : 'Off'}
+                </Text>
+              </Pressable>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.qualitySuggestions}>
+              {['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'].map((note) => (
+                <Pressable
+                  key={note}
+                  style={[styles.qualityChip, inputRoot === note ? styles.qualityChipActive : null, gameState === 'REVEALED' ? styles.chipReadonly : null]}
+                  onPress={() => setInputRoot(note)}
+                  disabled={gameState === 'REVEALED'}
+                >
+                  <Text style={[styles.qualityChipText, inputRoot === note ? styles.shapeButtonTextActive : null]}>
+                    {note}
+                  </Text>
+                </Pressable>
+              ))}
             </ScrollView>
           </View>
-        </View>
-      </Modal>
 
-      <Modal visible={isSubmitModalOpen} animationType="slide" transparent onRequestClose={() => setIsSubmitModalOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalSheet}>
-            <ScrollView contentContainerStyle={styles.modalSheetContent} showsVerticalScrollIndicator={false}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{gameState === 'PLAYING' ? 'Submit Answer' : 'Answer Review'}</Text>
-                <Pressable onPress={() => setIsSubmitModalOpen(false)} hitSlop={8}>
-                  <Text style={styles.modalClose}>Close</Text>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Chord Quality</Text>
+            <TextInput
+              value={inputQuality}
+              onChangeText={setInputQuality}
+              placeholder="maj7, min..."
+              style={[styles.input, gameState === 'REVEALED' ? styles.inputReadonly : null]}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={gameState === 'PLAYING'}
+            />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.qualitySuggestions}>
+              {CHORD_DICTIONARY.map((definition) => (
+                <Pressable
+                  key={definition.quality}
+                  style={[styles.qualityChip, gameState === 'REVEALED' ? styles.chipReadonly : null]}
+                  onPress={() => setInputQuality(definition.quality)}
+                  disabled={gameState === 'REVEALED'}
+                >
+                  <Text style={styles.qualityChipText}>{definition.quality}</Text>
                 </Pressable>
-              </View>
+              ))}
+            </ScrollView>
+          </View>
 
-              <View style={styles.inputGroup}>
-                <View style={styles.labelRow}>
-                  <Text style={styles.label}>Root Note</Text>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>String Shape</Text>
+            <View style={styles.shapeRow}>
+              {['5', '4', '3'].map((shapeValue) => {
+                const active = inputShape === shapeValue;
+                return (
                   <Pressable
-                    onPress={() => setShowRootHint((prev) => !prev)}
-                    style={[styles.hintToggle, showRootHint ? styles.hintToggleActive : null]}
-                  >
-                    <Text style={[styles.hintToggleText, showRootHint ? styles.hintToggleTextActive : null]}>
-                      Hint: {showRootHint ? 'On' : 'Off'}
-                    </Text>
-                  </Pressable>
-                </View>
-                <TextInput
-                  value={inputRoot}
-                  onChangeText={setInputRoot}
-                  placeholder="C, Db, D..."
-                  style={[styles.input, gameState === 'REVEALED' ? styles.inputReadonly : null]}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  editable={gameState === 'PLAYING'}
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Chord Quality</Text>
-                <TextInput
-                  value={inputQuality}
-                  onChangeText={setInputQuality}
-                  placeholder="maj7, min..."
-                  style={[styles.input, gameState === 'REVEALED' ? styles.inputReadonly : null]}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={gameState === 'PLAYING'}
-                />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.qualitySuggestions}>
-                  {CHORD_DICTIONARY.map((definition) => (
-                    <Pressable
-                      key={definition.quality}
-                      style={[styles.qualityChip, gameState === 'REVEALED' ? styles.chipReadonly : null]}
-                      onPress={() => setInputQuality(definition.quality)}
-                      disabled={gameState === 'REVEALED'}
-                    >
-                      <Text style={styles.qualityChipText}>{definition.quality}</Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>String Shape</Text>
-                <View style={styles.shapeRow}>
-                  {['5', '4', '3'].map((shapeValue) => {
-                    const active = inputShape === shapeValue;
-                    return (
-                      <Pressable
-                        key={shapeValue}
-                        style={[styles.shapeButton, active ? styles.shapeButtonActive : null, gameState === 'REVEALED' ? styles.chipReadonly : null]}
-                        onPress={() => setInputShape(shapeValue)}
-                        disabled={gameState === 'REVEALED'}
-                      >
-                        <Text style={[styles.shapeButtonText, active ? styles.shapeButtonTextActive : null]}>
-                          String {Number(shapeValue) + 1}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                  <Pressable
-                    style={[styles.shapeButton, gameState === 'REVEALED' ? styles.chipReadonly : null]}
-                    onPress={() => setInputShape('')}
+                    key={shapeValue}
+                    style={[styles.shapeButton, active ? styles.shapeButtonActive : null, gameState === 'REVEALED' ? styles.chipReadonly : null]}
+                    onPress={() => setInputShape(shapeValue)}
                     disabled={gameState === 'REVEALED'}
                   >
-                    <Text style={styles.shapeButtonText}>Any</Text>
-                  </Pressable>
-                </View>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <View style={styles.labelRow}>
-                  <Text style={styles.label}>Root Voicing</Text>
-                  <Pressable
-                    onPress={() => setShowVoicingHint((prev) => !prev)}
-                    style={[styles.hintToggle, showVoicingHint ? styles.hintToggleActive : null]}
-                  >
-                    <Text style={[styles.hintToggleText, showVoicingHint ? styles.hintToggleTextActive : null]}>
-                      Hint: {showVoicingHint ? 'On' : 'Off'}
+                    <Text style={[styles.shapeButtonText, active ? styles.shapeButtonTextActive : null]}>
+                      String {Number(shapeValue) + 1}
                     </Text>
                   </Pressable>
-                </View>
-                <TextInput
-                  value={inputVoicing}
-                  onChangeText={setInputVoicing}
-                  placeholder="E, G, C, A, D"
-                  style={[styles.input, gameState === 'REVEALED' ? styles.inputReadonly : null]}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  editable={gameState === 'PLAYING'}
-                />
-              </View>
-
+                );
+              })}
               <Pressable
-                onPress={() => {
-                  if (gameState === 'PLAYING') {
-                    handleSubmit();
-                  }
-                  setIsSubmitModalOpen(false);
-                }}
-                style={[styles.primaryAction, gameState === 'PLAYING' ? styles.submitAction : styles.readonlyAction]}
+                style={[styles.shapeButton, gameState === 'REVEALED' ? styles.chipReadonly : null]}
+                onPress={() => setInputShape('')}
+                disabled={gameState === 'REVEALED'}
               >
-                <Text style={styles.primaryActionText}>{gameState === 'PLAYING' ? 'Submit Answer' : 'Close'}</Text>
+                <Text style={styles.shapeButtonText}>Any</Text>
               </Pressable>
-            </ScrollView>
+            </View>
           </View>
+
+          <View style={styles.inputGroup}>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>Root Voicing</Text>
+              <Pressable
+                onPress={() => setShowVoicingHint((prev) => !prev)}
+                style={[styles.hintToggle, showVoicingHint ? styles.hintToggleActive : null]}
+              >
+                <Text style={[styles.hintToggleText, showVoicingHint ? styles.hintToggleTextActive : null]}>
+                  Hint: {showVoicingHint ? 'On' : 'Off'}
+                </Text>
+              </Pressable>
+            </View>
+            <TextInput
+              value={inputVoicing}
+              onChangeText={setInputVoicing}
+              placeholder="E, G, C, A, D"
+              style={[styles.input, gameState === 'REVEALED' ? styles.inputReadonly : null]}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              editable={gameState === 'PLAYING'}
+            />
+          </View>
+
+          <Pressable
+            onPress={() => {
+              if (gameState === 'PLAYING') {
+                submitGuess();
+              }
+            }}
+            style={[styles.primaryAction, gameState === 'PLAYING' ? styles.submitAction : styles.readonlyAction]}
+          >
+            <Text style={styles.primaryActionText}>
+              {gameState === 'PLAYING' ? 'Submit Answer' : 'Close'}
+            </Text>
+          </Pressable>
+        </ScrollView>
+      </View>
+      <View style={styles.mainContent}>
+        <View style={styles.tinyHeader}>
+          <Pressable
+            onPress={() => {
+              if (gameState === 'PLAYING') {
+                setGameState('REVEALED');
+              } else {
+                generateQuiz();
+              }
+            }}
+            style={[styles.headerButton, gameState === 'REVEALED' ? styles.headerButtonActive : null]}
+          >
+            <Text style={[styles.headerButtonText, gameState === 'REVEALED' ? styles.headerButtonTextActive : null]}>
+              {gameState === 'PLAYING' ? 'Give Up' : 'Next Round'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => {
+              if (gameState === 'PLAYING') {
+                submitGuess();
+              }
+            }}
+            style={[styles.headerButton, styles.submitHeaderButton]}
+          >
+            <Text style={[styles.headerButtonText, styles.submitHeaderButtonText]}>
+              Submit Answer
+            </Text>
+          </Pressable>
+
+          <Pressable onPress={() => console.log('History Placeholder')} style={styles.menuButton}>
+            <Text style={styles.menuButtonText}>History</Text>
+          </Pressable>
         </View>
-      </Modal>
+
+        <View style={styles.body}>
+          <SheetFretSplit
+            modeKey="QUIZ"
+            sheetTitle="Quiz Sheet"
+            sheetContent={
+              <View style={styles.sheetPaneContent}>
+                <View style={styles.sheetCard}>
+                  <SheetMusic
+                    notes={quizData.activePitches}
+                    colors={gameState === 'REVEALED'
+                      ? quizData.shape.offsets.map((offsetDef) => getIntervalHexColor(offsetDef.interval || '1'))
+                      : quizData.activePitches.map(() => '#334155')}
+                    gameMode="SANDBOX"
+                    useFlats={quizData.useFlats}
+                  />
+                </View>
+
+                <View style={[styles.revealPanel, gameState === 'REVEALED' ? styles.revealPanelVisible : styles.revealPanelHidden]}>
+                  <Text style={styles.revealName}>
+                    {getNoteNameFromPitchClass(quizData.rootPitchClass, quizData.useFlats)} {gameState === 'REVEALED' ? quizData.quality : '—'}
+                  </Text>
+                  <Text style={styles.revealSubtitle}>
+                    {gameState === 'REVEALED' ? 'Exact Reveal' : 'Shape / Voicing'}
+                  </Text>
+                  <Text style={styles.revealVoicing}>
+                    {shouldShowVoicingReveal
+                      ? `Shape: ${gameState === 'REVEALED' ? revealVoicingParts.baseLabel : '?'} | Voicing: ${quizData.rootVoicing}`
+                      : 'Shape: ? | Voicing: ?'}
+                  </Text>
+                </View>
+
+                <Text style={styles.constraintSummary}>Root Strings: {rootStringConstraintLabel}</Text>
+              </View>
+            }
+            fretboardContent={
+              <Fretboard
+                numFrets={25}
+                autoPanTarget={gameState === 'REVEALED' ? quizData.rootFret : undefined}
+                markers={markers}
+                onFretClick={() => {}}
+              />
+            }
+          />
+        </View>
+      </View>
+
     </View>
   );
 };
@@ -299,7 +286,28 @@ const ChordQuizMode: React.FC = () => {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+    flexDirection: 'row',
     backgroundColor: '#ffffff',
+  },
+  mainContent: {
+    flex: 1,
+    flexDirection: 'column',
+  },
+  sideRail: {
+    width: 190,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+  },
+  sideRailContent: {
+    padding: 12,
+    gap: 16,
+  },
+  sideRailTitle: {
+    color: '#0f172a',
+    fontSize: 14,
+    fontWeight: '900',
+    marginBottom: 4,
   },
   tinyHeader: {
     height: 44,
@@ -436,86 +444,18 @@ const styles = StyleSheet.create({
     color: '#1d4ed8',
     fontWeight: '700',
   },
-  revealVoicingToken: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: '#1e40af',
-  },
-  menuBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.38)',
-    justifyContent: 'flex-start',
-    paddingTop: 48,
-    paddingHorizontal: 10,
-  },
-  menuSheet: {
-    maxHeight: '86%',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 12,
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  menuSheetContent: {
-    gap: 10,
-    paddingBottom: 10,
-  },
-  menuHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  menuTitle: {
-    color: '#0f172a',
-    fontSize: 12,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  menuClose: {
-    color: '#64748b',
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.7,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.55)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    maxHeight: '90%',
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 12,
-  },
-  modalSheetContent: {
-    gap: 10,
-    paddingBottom: 16,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#0f172a',
-  },
-  modalClose: {
-    color: '#475569',
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   inputGroup: {
     gap: 6,
   },
@@ -580,6 +520,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
+  qualityChipActive: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
   chipReadonly: {
     opacity: 0.55,
   },

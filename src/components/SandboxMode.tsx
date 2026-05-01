@@ -4,11 +4,12 @@ import { Fretboard, type FretMarker } from './Fretboard';
 import SheetMusic from './SheetMusic';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
 import { getIntervalColor, getIntervalHexColor, getKeySignatureInfo, getNoteName, TUNING } from '../utils/musicTheory';
-import { useHistory, HistoryPanel } from './History';
+import { type HistoryItem, useHistory, HistoryPanel } from './History';
 import { LegendPanel } from './LegendPanel';
 import { useGlobalKeyConstraint } from '../hooks/useGlobalKey';
 import { buildSearchWithUpdates, navigateFromClick, preventMiddleMouseDefault } from '../utils/queryNavigation';
 import { readSessionNumber, readSessionString, restoreScrollTopWithRetries, writeSessionNumber, writeSessionString } from '../utils/viewState';
+import { scrollToTargetAndFlash } from '../utils/scrollFeedback';
 import { resolveRootFretForShape } from '../utils/chordShapeRendering';
 import {
   getDefinitionRootVoicings,
@@ -17,10 +18,13 @@ import {
 } from '../utils/chordVoicing';
 import { buildOrderedChordEntries } from '../utils/chordEntries';
 import { buildRootVoicingDisplayParts, buildRootVoicingPlainLabel } from '../utils/rootVoicingLabel';
-import { resolveGalleryTargetFromSandbox } from '../utils/galleryTargeting';
+import { buildVisualArchetypeGroups } from '../utils/visualArchetypes';
+import { parseDetectedChordName, resolveDetectedChordNavigationTargetFromSandbox } from '../utils/detectedChordNavigation';
+import { buildChordShapeTargetKey } from '../utils/galleryTargeting';
 
 const SANDBOX_SEARCH_KEY = 'fret-sandbox-search';
 const SANDBOX_LIBRARY_SCROLL_KEY = 'fret-sandbox-library-scroll';
+const SANDBOX_LIBRARY_FOCUS_HIGHLIGHT_MS = 2000;
 
 const CHORD_CONSUMER_NOTES = [
   'Add this file to src/utils/chords/, then run npm run format:chords to auto-register it in src/utils/chordLibrary.ts.',
@@ -65,17 +69,6 @@ interface SaveChordExportData {
   exportConstName: string;
   fullFileTemplate: string;
   shapeSnippet: string;
-}
-
-function parseDetectedChordQuality(chordName: string): string | null {
-  const namePart = chordName.split('/')[0].trim();
-  const match = namePart.match(/^([A-G][b#]?)(.*)$/);
-  if (!match) {
-    return null;
-  }
-
-  const rawQuality = match[2].trim();
-  return rawQuality.length > 0 ? rawQuality : 'maj';
 }
 
 function sanitizeQualityForFileName(quality: string): string {
@@ -177,6 +170,10 @@ function buildSaveChordExportData(quality: string, frets: FretPosition[]): SaveC
   };
 }
 
+function buildLibraryVoicingButtonKey(chordIdentifier: string, rootString: number, rootVoicing: string): string {
+  return `${chordIdentifier}|${rootString}|${rootVoicing.trim().toUpperCase()}`;
+}
+
 const SandboxMode: React.FC = () => {
   const {
     clickedFrets,
@@ -202,6 +199,13 @@ const SandboxMode: React.FC = () => {
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [saveChordExport, setSaveChordExport] = useState<SaveChordExportData | null>(null);
   const [copiedTarget, setCopiedTarget] = useState<'full' | 'shape' | null>(null);
+  const [pendingLibraryFocus, setPendingLibraryFocus] = useState<{
+    chordId?: string;
+    quality: string;
+    rootString: number;
+    rootVoicing: string;
+  } | null>(null);
+  const [highlightedLibraryVoicingKey, setHighlightedLibraryVoicingKey] = useState<string | null>(null);
 
   const STRING_NAMES: Record<number, string> = {
     5: "Str 6E",
@@ -250,6 +254,7 @@ const SandboxMode: React.FC = () => {
         const rootVoicing = params.get('rootVoicing');
         const shapeIndex = params.get('shapeIndex');
         const fretOffset = params.get('fretOffset');
+        const focusLibrary = params.get('focusLibrary') === '1';
 
         const parsedChordId = parseChordDefinitionId(chordId);
         let definition = parsedChordId
@@ -298,6 +303,16 @@ const SandboxMode: React.FC = () => {
             shape = voicingInfo ? definition.shapes[voicingInfo.shapeIndex] : undefined;
           }
 
+          if (focusLibrary && hasRootString && rootVoicing) {
+            setSearch('');
+            setPendingLibraryFocus({
+              chordId: chordId ?? undefined,
+              quality: definition.quality,
+              rootString: parsedRootString,
+              rootVoicing: rootVoicing,
+            });
+          }
+
           if (shape) {
             if (hasFretOffset) {
               setChordShape(definition, shape, parsedFretOffset);
@@ -317,7 +332,70 @@ const SandboxMode: React.FC = () => {
     return () => window.removeEventListener('popstate', handleUrlState);
   }, [setChordShape]);
 
+  useEffect(() => {
+    if (!pendingLibraryFocus) {
+      return;
+    }
+
+    const container = chordLibraryRef.current;
+    if (!container) {
+      return;
+    }
+
+    const chordIdentifier = pendingLibraryFocus.chordId ?? pendingLibraryFocus.quality;
+    const focusKey = buildLibraryVoicingButtonKey(
+      chordIdentifier,
+      pendingLibraryFocus.rootString,
+      pendingLibraryFocus.rootVoicing,
+    );
+
+    const focusButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('button[data-focus-key]'));
+    const targetButton = focusButtons.find((button) => button.dataset.focusKey === focusKey);
+
+    const cards = Array.from(container.querySelectorAll<HTMLDivElement>('div[data-chord-id]'));
+    const targetCard = pendingLibraryFocus.chordId
+      ? cards.find((card) => card.dataset.chordId === pendingLibraryFocus.chordId)
+      : cards.find((card) => card.dataset.quality === pendingLibraryFocus.quality);
+
+    const scrollTarget = targetButton ?? targetCard;
+    if (!scrollTarget) {
+      return;
+    }
+
+    // Deep-link focus races are common here: the target can exist before final layout/scroll settles.
+    // Reuse the shared settle-aware helper so we only apply highlight after motion is done.
+    scrollToTargetAndFlash({
+      container,
+      target: scrollTarget,
+      flashTarget: () => {
+        setHighlightedLibraryVoicingKey(focusKey);
+      },
+    });
+
+    setPendingLibraryFocus(null);
+  }, [pendingLibraryFocus, search]);
+
+  useEffect(() => {
+    if (!highlightedLibraryVoicingKey) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setHighlightedLibraryVoicingKey(null);
+    }, SANDBOX_LIBRARY_FOCUS_HIGHLIGHT_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [highlightedLibraryVoicingKey]);
+
   const orderedChordEntries = useMemo(() => buildOrderedChordEntries(CHORD_DICTIONARY), []);
+  const visualArchetypeShapeKeys = useMemo(() => {
+    const shapeKeys = new Set<string>();
+    buildVisualArchetypeGroups(CHORD_DICTIONARY).forEach((group) => {
+      group.members.forEach((member) => shapeKeys.add(buildChordShapeTargetKey(member.chordId, member.shapeIndex)));
+    });
+
+    return shapeKeys;
+  }, []);
 
   const renderRootVoicingLabel = (rootString: number, rootVoicing: string) => {
     const parts = buildRootVoicingDisplayParts(rootString, rootVoicing);
@@ -409,31 +487,68 @@ const SandboxMode: React.FC = () => {
     })
     .sort((a, b) => a.pitch - b.pitch);
 
+  const detectedChordNavigationTarget = useMemo(() => {
+    return resolveDetectedChordNavigationTargetFromSandbox({
+      chordName: analyzedChords[selectedChordIndex]?.name,
+      entries: orderedChordEntries,
+      clickedFrets,
+      visualArchetypeShapeKeys,
+    });
+  }, [analyzedChords, selectedChordIndex, orderedChordEntries, clickedFrets, visualArchetypeShapeKeys]);
+
+  const canOpenSelectedChordInGallery = Boolean(detectedChordNavigationTarget?.galleryTarget.isAvailable);
+  const canOpenSelectedChordInVisualArchetype = Boolean(detectedChordNavigationTarget?.visualArchetypeTarget.isAvailable);
+
   const openSelectedChordInGallery = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const chord = analyzedChords[selectedChordIndex];
-    if (!chord) {
+    if (!detectedChordNavigationTarget || !detectedChordNavigationTarget.galleryTarget.isAvailable) {
       return;
     }
-
-    const namePart = chord.name.split('/')[0].trim();
-    const match = namePart.match(/^([A-G][b#]?)(.*)$/);
-    if (!match) {
-      return;
-    }
-
-    const key = match[1];
-    const galleryQuality = match[2].trim();
-
-    const galleryTarget = resolveGalleryTargetFromSandbox(orderedChordEntries, galleryQuality, clickedFrets);
 
     const gallerySearch = buildSearchWithUpdates({
       tab: 'gallery',
-      key,
-      scrollTo: galleryTarget.quality,
-      scrollToId: galleryTarget.chordId ?? null,
+      scrollTo: detectedChordNavigationTarget.galleryTarget.quality,
+      scrollToId: detectedChordNavigationTarget.galleryTarget.chordId ?? null,
+      scrollToRootString: detectedChordNavigationTarget.galleryTarget.rootString?.toString() ?? null,
+      scrollToRootVoicing: detectedChordNavigationTarget.galleryTarget.rootVoicing ?? null,
+      scrollToShapeIndex: detectedChordNavigationTarget.galleryTarget.shapeIndex?.toString() ?? null,
     });
 
     navigateFromClick(event, gallerySearch);
+  };
+
+  const openSelectedChordInVisualArchetype = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (!detectedChordNavigationTarget || !detectedChordNavigationTarget.visualArchetypeTarget.isAvailable) {
+      return;
+    }
+
+    const visualArchetypeSearch = buildSearchWithUpdates({
+      tab: 'visualarchetype',
+      scrollTo: detectedChordNavigationTarget.visualArchetypeTarget.quality,
+      scrollToId: detectedChordNavigationTarget.visualArchetypeTarget.chordId ?? null,
+      scrollToRootString: detectedChordNavigationTarget.visualArchetypeTarget.rootString?.toString() ?? null,
+      scrollToRootVoicing: detectedChordNavigationTarget.visualArchetypeTarget.rootVoicing ?? null,
+      scrollToShapeIndex: detectedChordNavigationTarget.visualArchetypeTarget.shapeIndex?.toString() ?? null,
+    });
+
+    navigateFromClick(event, visualArchetypeSearch);
+  };
+
+  const renderSandboxHistoryLabel = (item: HistoryItem<FretPosition[]>) => {
+    const labelMatch = item.label.match(/^(.*\()(Str\s+\d+[A-Ga-z]?)(?:\s+([A-G][A-Za-z0-9#b]*))(\))$/);
+    if (!labelMatch) {
+      return item.label;
+    }
+
+    const [, prefix, baseLabel, voicingLabel, suffix] = labelMatch;
+
+    return (
+      <>
+        {prefix}
+        {baseLabel}
+        <span className="ml-1 text-[10px] font-black leading-none align-baseline">{voicingLabel}</span>
+        {suffix}
+      </>
+    );
   };
 
   return (
@@ -478,7 +593,7 @@ const SandboxMode: React.FC = () => {
             className="h-[300px] overflow-y-auto border border-slate-200 bg-white rounded flex flex-col"
           >
             {filteredChords.map(({ definition, chordId }) => (
-              <div key={chordId} className="border-b border-slate-100 last:border-0 p-2">
+              <div key={chordId} data-chord-id={chordId} data-quality={definition.quality} className="border-b border-slate-100 last:border-0 p-2">
                 <div className="font-bold text-sm mb-1">{definition.quality}</div>
                 <div className="flex gap-1 justify-between">
                   {[5, 4, 3].map((rootString) => {
@@ -499,21 +614,26 @@ const SandboxMode: React.FC = () => {
 
                     return (
                       <div key={`${chordId}-${rootString}`} className="flex-1 flex flex-col gap-1">
-                        {rootStringOptions.map((option) => (
-                          <button
-                            key={`${chordId}-${rootString}-${option.rootVoicing}-${option.shapeIndex}`}
-                            onClick={() => {
-                              const pinnedRootFret = resolveRootFretForShape(keyPitchClass, option.shape);
-                              const newPositions = setChordShape(definition, option.shape, pinnedRootFret);
-                              const rootLabel = buildRootVoicingPlainLabel(option.rootString, option.rootVoicing);
-                              addHistory(`${definition.quality} (${rootLabel})`, newPositions);
-                            }}
-                            title={`Pin to key ${keyConstraint}: ${option.rootVoicing}`}
-                            className="w-full text-[10px] bg-slate-100 hover:bg-blue-100 text-slate-700 px-1 py-1 rounded text-center whitespace-nowrap"
-                          >
-                            {renderRootVoicingLabel(option.rootString, option.rootVoicing)}
-                          </button>
-                        ))}
+                        {rootStringOptions.map((option) => {
+                          const buttonFocusKey = buildLibraryVoicingButtonKey(chordId, option.rootString, option.rootVoicing);
+
+                          return (
+                            <button
+                              key={`${chordId}-${rootString}-${option.rootVoicing}-${option.shapeIndex}`}
+                              data-focus-key={buttonFocusKey}
+                              onClick={() => {
+                                const pinnedRootFret = resolveRootFretForShape(keyPitchClass, option.shape);
+                                const newPositions = setChordShape(definition, option.shape, pinnedRootFret);
+                                const rootLabel = buildRootVoicingPlainLabel(option.rootString, option.rootVoicing);
+                                addHistory(`${definition.quality} (${rootLabel})`, newPositions);
+                              }}
+                              title={`Pin to key ${keyConstraint}: ${option.rootVoicing}`}
+                              className={`w-full text-[10px] bg-slate-100 hover:bg-blue-100 text-slate-700 px-1 py-1 rounded text-center whitespace-nowrap ${highlightedLibraryVoicingKey === buttonFocusKey ? 'ring-2 ring-amber-500 ring-offset-1 ring-offset-white' : ''}`}
+                            >
+                              {renderRootVoicingLabel(option.rootString, option.rootVoicing)}
+                            </button>
+                          );
+                        })}
                       </div>
                     );
                   })}
@@ -569,14 +689,14 @@ const SandboxMode: React.FC = () => {
                           return;
                         }
 
-                        const quality = parseDetectedChordQuality(selected.name);
-                        if (!quality) {
+                        const parsedChord = parseDetectedChordName(selected.name);
+                        if (!parsedChord) {
                           return;
                         }
 
                         addHistory(selected.name, clickedFrets);
                         setCopiedTarget(null);
-                        setSaveChordExport(buildSaveChordExportData(quality, clickedFrets));
+                        setSaveChordExport(buildSaveChordExportData(parsedChord.quality, clickedFrets));
                         setIsSaveModalOpen(true);
                       }}
                       className="text-[10px] px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded uppercase tracking-widest transition"
@@ -587,9 +707,21 @@ const SandboxMode: React.FC = () => {
                       onClick={openSelectedChordInGallery}
                       onAuxClick={openSelectedChordInGallery}
                       onMouseDown={preventMiddleMouseDefault}
-                      className="text-[10px] px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded uppercase tracking-widest transition"
+                      disabled={!canOpenSelectedChordInGallery}
+                      title={canOpenSelectedChordInGallery ? 'Open detected chord in Gallery' : 'No matching Gallery entry for this detected chord'}
+                      className={`text-[10px] px-3 py-1 font-bold rounded uppercase tracking-widest transition ${canOpenSelectedChordInGallery ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}
                     >
                       See In Gallery
+                    </button>
+                    <button
+                      onClick={openSelectedChordInVisualArchetype}
+                      onAuxClick={openSelectedChordInVisualArchetype}
+                      onMouseDown={preventMiddleMouseDefault}
+                      disabled={!canOpenSelectedChordInVisualArchetype}
+                      title={canOpenSelectedChordInVisualArchetype ? 'Open detected chord in Visual Archetype' : 'No matching Visual Archetype entry for this detected chord'}
+                      className={`text-[10px] px-3 py-1 font-bold rounded uppercase tracking-widest transition ${canOpenSelectedChordInVisualArchetype ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}
+                    >
+                      See In Visual Archetype
                     </button>
                   </div>
                 </div>
@@ -627,8 +759,7 @@ const SandboxMode: React.FC = () => {
                  key={`${n.stringIndex}-${n.fret}-${i}`}
                  className={`px-3 py-1 font-bold text-sm tracking-wide rounded shadow-sm flex gap-0.5 items-center ${intervalClass}`}
                >
-                 <span className="mr-2">{n.note}</span>
-                 <span className="text-[10px] opacity-70 mb-1">{n.octave}</span>
+                 <span>{`${n.note}${n.octave}`}</span>
                </div>
              )})
            ) : (
@@ -639,7 +770,12 @@ const SandboxMode: React.FC = () => {
 
       {/* RIGHT SIDEBAR - HISTORY */}
       <aside className="w-full lg:w-72 h-full overflow-y-auto bg-slate-50 border-l border-slate-200 flex flex-col shrink-0 p-6">
-        <HistoryPanel history={history} onClear={clearHistory} onRestore={(state) => setClickedFrets(state)} />
+        <HistoryPanel
+          history={history}
+          onClear={clearHistory}
+          onRestore={(state) => setClickedFrets(state)}
+          renderLabel={renderSandboxHistoryLabel}
+        />
         <LegendPanel />
       </aside>
 

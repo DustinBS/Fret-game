@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from 're
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
 import { getNoteNameFromPitchClass, getKeySignatureInfo, KEY_CONSTRAINT_OPTIONS, keySignatureUsesFlats } from '../utils/musicTheory';
 import { DIATONIC_INTERVALS, CHORD_QUALITY_DIATONIC_MAP } from '../utils/diatonic';
-import { flashTableRowOverlay, scrollToTargetAndFlash } from '../utils/scrollFeedback';
+import { flashElementOutline, flashTableRowOverlay, scrollToTargetsAndFlashTogether } from '../utils/scrollFeedback';
 import { buildSearchWithUpdates, navigateFromClick, preventMiddleMouseDefault } from '../utils/queryNavigation';
 import { buildShapeSheetPreview } from '../utils/chordShapeRendering';
 import {
@@ -34,6 +34,14 @@ interface GalleryModeProps {
   useGalleryColors: boolean;
 }
 
+interface GalleryDeepLinkTarget {
+  quality: string;
+  chordId?: string;
+  rootString?: number;
+  rootVoicing?: string;
+  shapeIndex?: number;
+}
+
 export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyConstraint, useGalleryColors }) => {
   const [showDiatonic, setShowDiatonic] = useState(() => readSessionBoolean(GALLERY_SHOW_DIATONIC_KEY, true));
   const [selectedDiatonic, setSelectedDiatonic] = useState<Record<string, string>>(
@@ -42,6 +50,7 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
   const [selectedVoicingByRoot, setSelectedVoicingByRoot] = useState<Record<string, string>>(
     () => readSessionJson<Record<string, string>>(GALLERY_SELECTED_VOICING_KEY, {}),
   );
+  const [pendingDeepLinkTarget, setPendingDeepLinkTarget] = useState<GalleryDeepLinkTarget | null>(null);
   const scrollContainerRef = useRef<HTMLElement>(null);
   const chordListRef = useRef<HTMLDivElement>(null);
 
@@ -55,29 +64,141 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
     return qualityDisplayLabelMap.get(chordId) ?? quality;
   };
 
-  const scrollToQuality = (quality: string, chordId?: string) => {
-    if (!scrollContainerRef.current) {
+  const scrollToQuality = useMemo(() => {
+    return (target: GalleryDeepLinkTarget): boolean => {
+      if (!scrollContainerRef.current) {
+        return false;
+      }
+
+      const { quality, chordId, rootString, rootVoicing, shapeIndex } = target;
+      const listContainer = chordListRef.current;
+      const listTargetButton = listContainer
+        ? Array.from(
+          listContainer.querySelectorAll<HTMLButtonElement>('button[data-chord-list-entry="gallery"]'),
+        ).find((button) => {
+          if (chordId) {
+            return button.dataset.chordId === chordId;
+          }
+
+          return button.dataset.quality === quality;
+        }) ?? null
+        : null;
+
+      const buildSynchronizedFlashTargets = (
+        mainTarget: HTMLElement,
+        mainFlashTarget: (targetElement: HTMLElement) => void,
+      ) => {
+        const flashTargets = [{
+          container: scrollContainerRef.current as HTMLElement,
+          target: mainTarget,
+          flashTarget: mainFlashTarget,
+        }];
+
+        if (listContainer && listTargetButton) {
+          flashTargets.push({
+            container: listContainer,
+            target: listTargetButton,
+            flashTarget: (listTarget: HTMLElement) =>
+              flashElementOutline(listTarget, { thicknessPx: 3, holdMs: 160 }),
+          });
+        }
+
+        return flashTargets;
+      };
+
+      if (chordId && (rootString !== undefined || rootVoicing || shapeIndex !== undefined)) {
+        const cellButtons = Array.from(
+          scrollContainerRef.current.querySelectorAll<HTMLButtonElement>('button[data-scroll-cell="gallery"]'),
+        );
+        const targetCell = cellButtons.find((button) => {
+          if (button.dataset.chordId !== chordId) {
+            return false;
+          }
+
+          if (rootString !== undefined && Number(button.dataset.rootString) !== rootString) {
+            return false;
+          }
+
+          if (rootVoicing && button.dataset.rootVoicing !== rootVoicing) {
+            return false;
+          }
+
+          if (shapeIndex !== undefined && Number(button.dataset.shapeIndex) !== shapeIndex) {
+            return false;
+          }
+
+          return true;
+        });
+
+        if (targetCell) {
+          scrollToTargetsAndFlashTogether({
+            targets: buildSynchronizedFlashTargets(targetCell, (flashTarget) =>
+              flashElementOutline(flashTarget, { thicknessPx: 4 }),
+            ),
+          });
+          return true;
+        }
+      }
+
+      const rows = Array.from(scrollContainerRef.current.querySelectorAll('tr[data-quality]'));
+      const targetRow = rows.find((row) => {
+        const element = row as HTMLElement;
+        if (chordId) {
+          return element.dataset.chordId === chordId;
+        }
+
+        return element.dataset.quality === quality;
+      });
+
+      if (!targetRow) {
+        return false;
+      }
+
+      scrollToTargetsAndFlashTogether({
+        targets: buildSynchronizedFlashTargets(
+          targetRow as HTMLElement,
+          (rowTarget) => flashTableRowOverlay(rowTarget, { thicknessPx: 5, holdMs: 240 }),
+        ),
+      });
+
+      return true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pendingDeepLinkTarget) {
       return;
     }
 
-    const rows = Array.from(scrollContainerRef.current.querySelectorAll('tr[data-quality]'));
-    const targetRow = rows.find((row) => {
-      const element = row as HTMLElement;
-      if (chordId) {
-        return element.dataset.chordId === chordId;
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 24;
+
+    // Deep links can arrive before the heavy table fully mounts/measures. Retry for a short
+    // RAF window so we don't drop the request and silently fail navigation.
+    const tryScroll = () => {
+      if (cancelled) {
+        return;
       }
 
-      return element.dataset.quality === quality;
-    });
+      const didScroll = scrollToQuality(pendingDeepLinkTarget);
+      if (didScroll) {
+        setPendingDeepLinkTarget(null);
+        return;
+      }
 
-    if (targetRow) {
-      scrollToTargetAndFlash({
-        container: scrollContainerRef.current,
-        target: targetRow as HTMLElement,
-        flashTarget: (target) => flashTableRowOverlay(target, { thicknessPx: 5, holdMs: 240 }),
-      });
-    }
-  };
+      attempts += 1;
+      if (attempts < maxAttempts) {
+        window.requestAnimationFrame(tryScroll);
+      }
+    };
+
+    tryScroll();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingDeepLinkTarget, scrollToQuality]);
 
   useEffect(() => {
     writeSessionBoolean(GALLERY_SHOW_DIATONIC_KEY, showDiatonic);
@@ -146,10 +267,30 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
 
       const scrollTo = params.get('scrollTo');
       const scrollToId = params.get('scrollToId');
+      const scrollToRootStringToken = params.get('scrollToRootString');
+      const parsedScrollToRootString = Number.parseInt(scrollToRootStringToken ?? '', 10);
+      const scrollToRootString = Number.isFinite(parsedScrollToRootString)
+        ? parsedScrollToRootString
+        : undefined;
+      const scrollToShapeIndexToken = params.get('scrollToShapeIndex');
+      const parsedScrollToShapeIndex = Number.parseInt(scrollToShapeIndexToken ?? '', 10);
+      const scrollToShapeIndex = Number.isFinite(parsedScrollToShapeIndex)
+        ? parsedScrollToShapeIndex
+        : undefined;
+      const scrollToRootVoicing = params.get('scrollToRootVoicing') ?? undefined;
       if (scrollTo || scrollToId) {
-        scrollToQuality(scrollTo ?? '', scrollToId ?? undefined);
+        setPendingDeepLinkTarget({
+          quality: scrollTo ?? '',
+          chordId: scrollToId ?? undefined,
+          rootString: scrollToRootString,
+          rootVoicing: scrollToRootVoicing,
+          shapeIndex: scrollToShapeIndex,
+        });
         params.delete('scrollTo');
         params.delete('scrollToId');
+        params.delete('scrollToRootString');
+        params.delete('scrollToRootVoicing');
+        params.delete('scrollToShapeIndex');
         window.history.replaceState({}, '', `?${params.toString()}`);
       }
     };
@@ -204,7 +345,10 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
             {orderedChordEntries.map(({ definition, chordId }) => (
               <button
                 key={chordId}
-                onClick={() => scrollToQuality(definition.quality, chordId)}
+                data-chord-list-entry="gallery"
+                data-chord-id={chordId}
+                data-quality={definition.quality}
+                onClick={() => scrollToQuality({ quality: definition.quality, chordId })}
                 className="text-left text-xs font-bold px-2 py-1 rounded hover:bg-blue-50 text-slate-700"
               >
                 {getDisplayQuality(chordId, definition.quality)}
@@ -301,6 +445,9 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
                         tab: 'sandbox',
                         chordId,
                         quality: definition.quality,
+                        scrollTo: definition.quality,
+                        scrollToId: chordId,
+                        focusLibrary: '1',
                         rootString: rootString.toString(),
                         rootVoicing: activeOption.rootVoicing,
                         shapeIndex: activeOption.shapeIndex.toString(),
@@ -340,6 +487,11 @@ export const GalleryMode: React.FC<GalleryModeProps> = ({ keyConstraint, setKeyC
 
                           <button
                             type="button"
+                            data-scroll-cell="gallery"
+                            data-chord-id={chordId}
+                            data-root-string={rootString.toString()}
+                            data-root-voicing={activeOption.rootVoicing}
+                            data-shape-index={activeOption.shapeIndex.toString()}
                             onClick={handleCellClick}
                             onAuxClick={handleCellClick}
                             onMouseDown={preventMiddleMouseDefault}

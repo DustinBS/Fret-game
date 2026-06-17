@@ -21,7 +21,7 @@ const SAFE_PALETTE = [
   { name: '7',  bg: 'bg-[#b15928]', text: 'text-[#b15928]', border: 'border-[#b15928]', hex: '#b15928' },
 ];
 
-const FretboardGame = () => {
+const FretboardGame = ({ sidebarCollapsed }: { sidebarCollapsed?: boolean }) => {
   const {
     targetNotes, colorIndices, roundUseFlats, noteCount, updateNoteCount,
     gameMode, toggleGameMode, accidentalMode, cycleAccidentalMode,
@@ -101,9 +101,10 @@ const FretboardGame = () => {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.sideRail}>
-        <ScrollView contentContainerStyle={styles.sideRailContent} showsVerticalScrollIndicator={false}>
-          <Text style={styles.sideRailTitle}>Trainer Menu</Text>
+      <View style={[styles.sideRail, sidebarCollapsed ? styles.sideRailCollapsed : styles.sideRailExpanded]}>
+        {!sidebarCollapsed ? (
+          <ScrollView contentContainerStyle={styles.sideRailContent} showsVerticalScrollIndicator={false}>
+            <Text style={styles.sideRailTitle}>Trainer Menu</Text>
           <View style={styles.noteCountRow}>
             <Text style={styles.settingLabel}>Note Count</Text>
             <View style={styles.counterWrap}>
@@ -128,7 +129,8 @@ const FretboardGame = () => {
           <Pressable onPress={clearGuesses} style={[styles.menuActionButton, styles.clearActionButton]}>
             <Text style={[styles.menuActionLabel, styles.clearActionLabel]}>Clear Guesses</Text>
           </Pressable>
-        </ScrollView>
+          </ScrollView>
+        ) : null}
       </View>
       <View style={styles.mainContent}>
         <View style={styles.tinyHeader}>
@@ -229,14 +231,19 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
   },
   sideRail: {
-    width: 190,
     borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: '#cbd5e1',
     backgroundColor: '#f8fafc',
   },
+  sideRailExpanded: {
+    width: 160,
+  },
+  sideRailCollapsed: {
+    width: 56,
+  },
   sideRailContent: {
-    padding: 12,
-    gap: 16,
+    padding: 8,
+    gap: 12,
   },
   sideRailTitle: {
     color: '#0f172a',

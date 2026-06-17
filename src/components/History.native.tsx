@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, type TextStyle, View } from 'react-native';
 import { readSessionJson, writeSessionJson } from '../utils/viewState';
 
 export interface HistoryItem<T = unknown> {
@@ -44,6 +44,30 @@ interface HistoryPanelProps<T = unknown> {
   history: HistoryItem<T>[];
   onClear: () => void;
   onRestore?: (state: T) => void;
+  renderLabel?: (item: HistoryItem<T>) => React.ReactNode;
+  getLabelStyle?: (item: HistoryItem<T>) => TextStyle | undefined;
+}
+
+interface HistoryModalProps<T = unknown> extends HistoryPanelProps<T> {
+  visible: boolean;
+  onClose: () => void;
+}
+
+export function getCorrectMissHistoryTextStyle<T>(item: HistoryItem<T>): TextStyle {
+  const stateCandidate = item.state as { wasCorrect?: unknown } | undefined;
+  if (typeof stateCandidate?.wasCorrect === 'boolean') {
+    return { color: stateCandidate.wasCorrect ? '#059669' : '#dc2626' };
+  }
+
+  if (item.label.includes('(Correct)')) {
+    return { color: '#059669' };
+  }
+
+  if (item.label.includes('(Miss)')) {
+    return { color: '#dc2626' };
+  }
+
+  return {};
 }
 
 function formatTimestamp(timestamp: number): string {
@@ -54,7 +78,7 @@ function formatTimestamp(timestamp: number): string {
   }
 }
 
-export const HistoryPanel = <T,>({ history, onClear, onRestore }: HistoryPanelProps<T>) => {
+export const HistoryPanel = <T,>({ history, onClear, onRestore, renderLabel, getLabelStyle }: HistoryPanelProps<T>) => {
   if (history.length === 0) {
     return null;
   }
@@ -83,13 +107,44 @@ export const HistoryPanel = <T,>({ history, onClear, onRestore }: HistoryPanelPr
               style={[styles.row, hasState ? styles.rowInteractive : null]}
               disabled={!hasState || !onRestore}
             >
-              <Text style={styles.rowLabel}>{item.label}</Text>
+              <Text style={[styles.rowLabel, getLabelStyle?.(item)]}>{renderLabel ? renderLabel(item) : item.label}</Text>
               <Text style={styles.rowTime}>{formatTimestamp(item.timestamp)}</Text>
             </Pressable>
           );
         })}
       </ScrollView>
     </View>
+  );
+};
+
+export const HistoryModal = <T,>({ visible, onClose, history, onClear, onRestore, renderLabel, getLabelStyle }: HistoryModalProps<T>) => {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
+          <View style={styles.headerRow}>
+            <Text style={styles.headerText}>History</Text>
+            <Pressable onPress={onClear} hitSlop={8}>
+              <Text style={styles.clearText}>Clear</Text>
+            </Pressable>
+          </View>
+
+          {history.length > 0 ? (
+            <HistoryPanel
+              history={history}
+              onClear={onClear}
+              onRestore={onRestore}
+              renderLabel={renderLabel}
+              getLabelStyle={getLabelStyle}
+            />
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>No history yet.</Text>
+            </View>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 };
 
@@ -151,6 +206,33 @@ const styles = StyleSheet.create({
   rowTime: {
     fontSize: 10,
     color: '#94a3b8',
+    fontWeight: '600',
+  },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  sheet: {
+    width: '100%',
+    maxWidth: 520,
+    maxHeight: '82%',
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    padding: 16,
+  },
+  emptyState: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStateText: {
+    color: '#64748b',
+    fontSize: 12,
     fontWeight: '600',
   },
 });

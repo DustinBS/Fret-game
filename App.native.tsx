@@ -39,19 +39,31 @@ const TAB_ORDER: NativeTab[] = ['TRAINER', 'SANDBOX', 'QUIZ', 'GALLERY', 'VISUAL
 function NativeMenuButton({
   tab,
   active,
+  compact,
   onPress,
 }: {
   tab: NativeTab;
   active: boolean;
+  compact: boolean;
   onPress: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.sideButton, active ? styles.sideButtonActive : null]}
+      style={[
+        styles.sideButton,
+        compact ? styles.sideButtonCompact : null,
+        active ? styles.sideButtonActive : null,
+      ]}
     >
-      <Text style={[styles.sideButtonText, active ? styles.sideButtonTextActive : null]}>
-        {TAB_LABELS[tab]}
+      <Text
+        style={[
+          styles.sideButtonText,
+          compact ? styles.sideButtonTextCompact : null,
+          active ? styles.sideButtonTextActive : null,
+        ]}
+      >
+        {compact ? TAB_SHORT_LABELS[tab] : TAB_LABELS[tab]}
       </Text>
     </Pressable>
   );
@@ -159,13 +171,25 @@ export default function App() {
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeArea} edges={['right', 'bottom', 'left']}>
         <View style={styles.container}>
-          <View style={styles.topNavBar}>
-            <ScrollView horizontal style={styles.topNavBarList} contentContainerStyle={styles.topNavBarListContent} showsHorizontalScrollIndicator={false}>
+          <View style={[styles.sideRail, sidebarCollapsed ? styles.sideRailCollapsed : styles.sideRailExpanded]}>
+            <View style={styles.sideRailTopRow}>
+              {!sidebarCollapsed ? <Text style={styles.sideRailTitle}>Menu</Text> : null}
+              <Pressable
+                onPress={() => setSidebarCollapsed((prev) => !prev)}
+                style={styles.collapseButton}
+                hitSlop={8}
+              >
+                <Text style={styles.collapseButtonText}>{sidebarCollapsed ? '>' : '<'}</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.sideRailContent} showsVerticalScrollIndicator={false}>
               {TAB_ORDER.map((tab) => (
                 <NativeMenuButton
                   key={tab}
                   tab={tab}
                   active={activeTab === tab}
+                  compact={sidebarCollapsed}
                   onPress={() => activateTab(tab)}
                 />
               ))}
@@ -174,7 +198,7 @@ export default function App() {
 
           <View style={styles.contentArea}>
             <View style={[styles.screenLayer, { display: activeTab === 'TRAINER' ? 'flex' : 'none' }]}>
-              <FretboardGame />
+              <FretboardGame sidebarCollapsed={sidebarCollapsed} />
             </View>
 
             {mountedTabs.SANDBOX ? (
@@ -184,13 +208,14 @@ export default function App() {
                   onOpenGallery={openGalleryFromSandbox}
                   onOpenVisualArchetype={openVisualArchetypeFromSandbox}
                   keyConstraint={globalKey}
+                  sidebarCollapsed={sidebarCollapsed}
                 />
               </View>
             ) : null}
 
             {mountedTabs.QUIZ ? (
               <View style={[styles.screenLayer, { display: activeTab === 'QUIZ' ? 'flex' : 'none' }]}>
-                <ChordQuizMode />
+                <ChordQuizMode sidebarCollapsed={sidebarCollapsed} />
               </View>
             ) : null}
 
@@ -203,6 +228,7 @@ export default function App() {
                   onChangeKeyConstraint={setGlobalKey}
                   onOpenSandbox={openSandboxFromShape}
                   scrollRequest={galleryScrollRequest}
+                  sidebarCollapsed={sidebarCollapsed}
                 />
               </View>
             ) : null}
@@ -216,6 +242,7 @@ export default function App() {
                   onChangeKeyConstraint={setGlobalKey}
                   onOpenSandbox={openSandboxFromShape}
                   scrollRequest={visualArchetypeScrollRequest}
+                  sidebarCollapsed={sidebarCollapsed}
                 />
               </View>
             ) : null}
@@ -233,33 +260,70 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    flexDirection: 'column',
+    flexDirection: 'row',
     backgroundColor: '#ffffff',
   },
-  topNavBar: {
-    height: 48,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#cbd5e1',
+  sideRail: {
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: '#cbd5e1',
     backgroundColor: '#f8fafc',
+    paddingTop: 10,
+    paddingBottom: 10,
   },
-  topNavBarList: {
-    flex: 1,
+  sideRailExpanded: {
+    width: 160,
   },
-  topNavBarListContent: {
-    gap: 8,
-    paddingHorizontal: 8,
-    alignItems: 'center',
+  sideRailCollapsed: {
+    width: 56,
+  },
+  sideRailTopRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 6,
+    paddingBottom: 10,
+  },
+  sideRailTitle: {
+    color: '#0f172a',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+  },
+  collapseButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  collapseButtonText: {
+    color: '#1e293b',
+    fontSize: 11,
+    fontWeight: '900',
+    marginTop: -1,
+  },
+  sideRailContent: {
+    gap: 8,
+    paddingHorizontal: 6,
+    paddingBottom: 8,
   },
   sideButton: {
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#cbd5e1',
     backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  sideButtonCompact: {
+    paddingHorizontal: 0,
+    paddingVertical: 10,
   },
   sideButtonActive: {
     borderColor: '#2563eb',
@@ -272,12 +336,17 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.7,
   },
+  sideButtonTextCompact: {
+    fontSize: 10,
+    letterSpacing: 1,
+  },
   sideButtonTextActive: {
     color: '#1d4ed8',
   },
   contentArea: {
     flex: 1,
     position: 'relative',
+    backgroundColor: '#ffffff',
   },
   screenLayer: {
     ...StyleSheet.absoluteFillObject,

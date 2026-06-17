@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { FlatList, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
 import {
   getKeySignatureInfo,
@@ -68,6 +68,7 @@ interface GalleryModeProps {
     rootVoicing?: string;
     shapeIndex?: number;
   } | null;
+  sidebarCollapsed?: boolean;
 }
 
 const GalleryMode: React.FC<GalleryModeProps> = ({
@@ -77,6 +78,7 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
   onChangeKeyConstraint,
   onOpenSandbox,
   scrollRequest,
+  sidebarCollapsed,
 }) => {
   const [showDiatonic, setShowDiatonic] = useState(() => readSessionBoolean(GALLERY_SHOW_DIATONIC_KEY, true));
   const [selectedDiatonic, setSelectedDiatonic] = useState<Record<string, string>>(
@@ -255,7 +257,8 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
 
   return (
     <View style={styles.screen}>
-      <View style={styles.actionHeader}>
+      {!sidebarCollapsed ? (
+        <View style={styles.actionHeader}>
         <Pressable onPress={() => setIsChordListOpen(true)} style={styles.actionButton}>
           <Text style={styles.actionButtonText}>Chord List</Text>
         </Pressable>
@@ -277,6 +280,7 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
           <Text style={styles.menuButtonText}>☰</Text>
         </Pressable>
       </View>
+      ) : null}
 
       <FlatList
         ref={scrollRef}
@@ -546,7 +550,7 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const styles: any = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#ffffff',
@@ -639,6 +643,64 @@ const styles = StyleSheet.create({
     maxHeight: 420,
   },
   modalListContent: {
+    gap: 8,
+    paddingBottom: 10,
+  },
+  floatingMenuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.32)',
+    justifyContent: 'flex-end',
+  },
+  floatingMenuSheet: {
+    backgroundColor: '#ffffff',
+    padding: 12,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    maxHeight: 520,
+  },
+  floatingMenuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  floatingMenuTitle: {
+    color: '#0f172a',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  floatingMenuClose: {
+    color: '#1d4ed8',
+    fontWeight: '700',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.32)',
+    justifyContent: 'center',
+    padding: 12,
+  },
+  modalSheet: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 12,
+    maxHeight: 640,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    color: '#0f172a',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  modalClose: {
+    color: '#1d4ed8',
+    fontWeight: '700',
+  },
+  modalSheetContent: {
     gap: 8,
     paddingBottom: 10,
   },

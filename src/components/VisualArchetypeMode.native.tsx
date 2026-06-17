@@ -99,6 +99,7 @@ interface VisualArchetypeModeProps {
     rootVoicing?: string;
     shapeIndex?: number;
   } | null;
+  sidebarCollapsed?: boolean;
 }
 
 const ROOT_FILTER_OPTIONS: RootStringFilter[] = ['ALL', 5, 4, 3, 2];
@@ -127,6 +128,7 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
   onChangeKeyConstraint,
   onOpenSandbox,
   scrollRequest,
+  sidebarCollapsed,
 }) => {
   const [rootStringFilter, setRootStringFilter] = useState<RootStringFilter>(() => {
     return parseRootStringFilter(readSessionString(VISUAL_ROOT_FILTER_KEY, 'ALL'));
@@ -329,7 +331,8 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
 
   return (
     <View style={styles.screen}>
-      <View style={styles.actionHeader}>
+      {!sidebarCollapsed ? (
+        <View style={styles.actionHeader}>
         <Pressable onPress={() => setIsChordListOpen(true)} style={styles.actionButton}>
           <Text style={styles.actionButtonText}>Chord List</Text>
         </Pressable>
@@ -352,7 +355,8 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
             Roots: {rootStringFilter === 'ALL' ? 'All' : `Str ${rootStringFilter + 1}`}
           </Text>
         </Pressable>
-      </View>
+        </View>
+      ) : null}
 
       <ScrollView
         ref={scrollRef}
@@ -632,7 +636,7 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const styles: any = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#ffffff',
@@ -899,6 +903,37 @@ const styles = StyleSheet.create({
     color: '#1d4ed8',
     fontSize: 10,
     fontWeight: '800',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.32)',
+    justifyContent: 'center',
+    padding: 12,
+  },
+  modalSheet: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 12,
+    maxHeight: 640,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    color: '#0f172a',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  modalClose: {
+    color: '#1d4ed8',
+    fontWeight: '700',
+  },
+  modalSheetContent: {
+    gap: 8,
+    paddingBottom: 10,
   },
 });
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { QUIZ_ROOT_STRING_OPTIONS, useChordQuiz } from '../hooks/useChordQuiz';
 import { getIntervalColor, getIntervalHexColor, getNoteNameFromPitchClass } from '../utils/musicTheory';
@@ -7,12 +7,43 @@ import SheetMusic from './SheetMusic';
 import { CHORD_DICTIONARY } from '../utils/chordLibrary';
 import { SheetFretSplit } from './SheetFretSplit.native';
 import { buildRootVoicingDisplayParts } from '../utils/rootVoicingLabel';
+import { HistoryModal, getCorrectMissHistoryTextStyle, useHistory } from './History.native';
 
-const ChordQuizMode: React.FC = () => {
+interface QuizHistoryState {
+  quizData: {
+    rootPitchClass: number;
+    quality: string;
+    rootVoicing: string;
+    shape: {
+      rootString: number;
+      offsets: Array<{ string: number; offset: number; interval: string | undefined }>;
+    };
+    rootString: number;
+    rootFret: number;
+    activePitches: number[];
+    useFlats: boolean;
+  };
+  gameState: 'PLAYING' | 'REVEALED';
+  inputRoot: string;
+  inputQuality: string;
+  inputShape: string;
+  inputVoicing: string;
+  enabledRootStrings: readonly number[];
+  keyConstraint: string;
+  showRootHint: boolean;
+  showVoicingHint: boolean;
+  streak: number;
+  wasCorrect: boolean;
+}
+
+const ChordQuizMode: React.FC<{ sidebarCollapsed?: boolean }> = ({ sidebarCollapsed }) => {
   const {
     quizData,
+    setQuizData,
     gameState,
     setGameState,
+    streak,
+    setStreak,
     inputRoot,
     setInputRoot,
     inputQuality,
@@ -28,10 +59,18 @@ const ChordQuizMode: React.FC = () => {
     setShowRootHint,
     showVoicingHint,
     setShowVoicingHint,
+    setEnabledRootStrings,
+    keyConstraint,
+    setKeyConstraint,
     generateQuiz,
     submitGuess,
   } = useChordQuiz();
-  const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
+  const { history, addHistory, clearHistory } = useHistory<QuizHistoryState>('fret-native-quiz-history');
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const rootChipRowRef = useRef<ScrollView>(null);
+  const rootChipOffsetsRef = useRef<Record<string, number>>({});
+  const lastHintedRootRef = useRef<string | null>(null);
+  const hintedRoot = quizData ? getNoteNameFromPitchClass(quizData.rootPitchClass, quizData.useFlats) : '';
 
   useEffect(() => {
     if (!quizData) {
@@ -39,12 +78,90 @@ const ChordQuizMode: React.FC = () => {
     }
   }, [quizData, generateQuiz]);
 
+  const panHintIntoView = (note: string) => {
+    const offset = rootChipOffsetsRef.current[note];
+    if (offset === undefined) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      rootChipRowRef.current?.scrollTo({ x: Math.max(0, offset - 24), animated: true });
+    });
+  };
+
+  useEffect(() => {
+    if (!showRootHint || gameState !== 'PLAYING') {
+      return;
+    }
+
+    if (lastHintedRootRef.current !== hintedRoot) {
+      lastHintedRootRef.current = hintedRoot;
+      panHintIntoView(hintedRoot);
+      return;
+    }
+
+    panHintIntoView(hintedRoot);
+  }, [hintedRoot, gameState, showRootHint]);
+
   if (!quizData) {
     return null;
   }
 
   const handleSubmit = () => {
-    submitGuess();
+    if (gameState !== 'PLAYING') {
+      return;
+    }
+
+    const wasCorrect = submitGuess();
+    const actualName = `${getNoteNameFromPitchClass(quizData.rootPitchClass, quizData.useFlats)} ${quizData.quality}`;
+    const voicingLabel = buildRootVoicingDisplayParts(quizData.rootString, quizData.rootVoicing).plainLabel;
+
+    addHistory(`${actualName} (${voicingLabel})`, {
+      quizData,
+      gameState: 'REVEALED',
+      inputRoot,
+      inputQuality,
+      inputShape,
+      inputVoicing,
+      enabledRootStrings,
+      keyConstraint,
+      showRootHint,
+      showVoicingHint,
+      streak: wasCorrect ? streak + 1 : 0,
+      wasCorrect,
+    });
+
+    setIsHistoryOpen(false);
+  };
+
+  const handleRestoreHistory = (state: QuizHistoryState) => {
+    const normalizedQuizData = {
+      ...state.quizData,
+      shape: {
+        ...state.quizData.shape,
+        offsets: state.quizData.shape.offsets.map((off) => ({
+          ...off,
+          interval: off.interval ?? '1',
+        })),
+      },
+    };
+
+    setQuizData(normalizedQuizData as any);
+    setGameState(state.gameState);
+    setStreak(Number.isFinite(state.streak) && state.streak >= 0 ? state.streak : 0);
+    setInputRoot(state.inputRoot);
+    setInputQuality(state.inputQuality);
+    setInputShape(state.inputShape);
+    setInputVoicing(state.inputVoicing);
+    setEnabledRootStrings(
+      [...state.enabledRootStrings].filter((rootString): rootString is (typeof QUIZ_ROOT_STRING_OPTIONS)[number] =>
+        QUIZ_ROOT_STRING_OPTIONS.includes(rootString as (typeof QUIZ_ROOT_STRING_OPTIONS)[number]),
+      ),
+    );
+    setKeyConstraint(state.keyConstraint);
+    setShowRootHint(state.showRootHint);
+    setShowVoicingHint(state.showVoicingHint);
+    setIsHistoryOpen(false);
   };
 
   const markers: FretMarker[] = gameState === 'REVEALED'
@@ -62,9 +179,10 @@ const ChordQuizMode: React.FC = () => {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.sideRail}>
-        <ScrollView contentContainerStyle={styles.sideRailContent} showsVerticalScrollIndicator={false}>
-          <Text style={styles.sideRailTitle}>Root Strings</Text>
+      <View style={[styles.sideRail, sidebarCollapsed ? styles.sideRailCollapsed : styles.sideRailExpanded]}>
+        {!sidebarCollapsed ? (
+          <ScrollView contentContainerStyle={styles.sideRailContent} showsVerticalScrollIndicator={false}>
+            <Text style={styles.sideRailTitle}>Root Strings</Text>
           <View style={styles.constraintRow}>
             {QUIZ_ROOT_STRING_OPTIONS.map((rootString) => {
               const checked = enabledRootStrings.includes(rootString);
@@ -92,12 +210,18 @@ const ChordQuizMode: React.FC = () => {
                 </Text>
               </Pressable>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.qualitySuggestions}>
+            <ScrollView ref={rootChipRowRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.qualitySuggestions}>
               {['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'].map((note) => (
                 <Pressable
                   key={note}
                   style={[styles.qualityChip, inputRoot === note ? styles.qualityChipActive : null, gameState === 'REVEALED' ? styles.chipReadonly : null]}
                   onPress={() => setInputRoot(note)}
+                  onLayout={(event) => {
+                    rootChipOffsetsRef.current[note] = event.nativeEvent.layout.x;
+                    if (showRootHint && gameState === 'PLAYING' && note === hintedRoot) {
+                      panHintIntoView(note);
+                    }
+                  }}
                   disabled={gameState === 'REVEALED'}
                 >
                   <Text style={[styles.qualityChipText, inputRoot === note ? styles.shapeButtonTextActive : null]}>
@@ -106,7 +230,7 @@ const ChordQuizMode: React.FC = () => {
                 </Pressable>
               ))}
             </ScrollView>
-          </View>
+        </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Chord Quality</Text>
@@ -197,6 +321,7 @@ const ChordQuizMode: React.FC = () => {
             </Text>
           </Pressable>
         </ScrollView>
+          ) : null}
       </View>
       <View style={styles.mainContent}>
         <View style={styles.tinyHeader}>
@@ -208,28 +333,34 @@ const ChordQuizMode: React.FC = () => {
                 generateQuiz();
               }
             }}
-            style={[styles.headerButton, gameState === 'REVEALED' ? styles.headerButtonActive : null]}
+            style={[
+              styles.headerButton,
+              gameState === 'PLAYING' ? styles.giveUpButton : styles.headerButtonActive,
+            ]}
           >
-            <Text style={[styles.headerButtonText, gameState === 'REVEALED' ? styles.headerButtonTextActive : null]}>
+            <Text
+              style={[
+                styles.headerButtonText,
+                gameState === 'PLAYING' ? styles.giveUpButtonText : styles.headerButtonTextActive,
+              ]}
+            >
               {gameState === 'PLAYING' ? 'Give Up' : 'Next Round'}
             </Text>
           </Pressable>
 
+          {!sidebarCollapsed ? (
+            <Pressable onPress={() => setIsHistoryOpen(true)} style={styles.menuButton}>
+              <Text style={styles.menuButtonText}>History</Text>
+            </Pressable>
+          ) : null}
+
           <Pressable
-            onPress={() => {
-              if (gameState === 'PLAYING') {
-                submitGuess();
-              }
-            }}
+            onPress={handleSubmit}
             style={[styles.headerButton, styles.submitHeaderButton]}
           >
             <Text style={[styles.headerButtonText, styles.submitHeaderButtonText]}>
               Submit Answer
             </Text>
-          </Pressable>
-
-          <Pressable onPress={() => console.log('History Placeholder')} style={styles.menuButton}>
-            <Text style={styles.menuButtonText}>History</Text>
           </Pressable>
         </View>
 
@@ -270,7 +401,6 @@ const ChordQuizMode: React.FC = () => {
             fretboardContent={
               <Fretboard
                 numFrets={25}
-                autoPanTarget={gameState === 'REVEALED' ? quizData.rootFret : undefined}
                 markers={markers}
                 onFretClick={() => {}}
               />
@@ -278,6 +408,15 @@ const ChordQuizMode: React.FC = () => {
           />
         </View>
       </View>
+
+      <HistoryModal
+        visible={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        history={history}
+        onClear={clearHistory}
+        onRestore={handleRestoreHistory}
+        getLabelStyle={getCorrectMissHistoryTextStyle}
+      />
 
     </View>
   );
@@ -294,14 +433,19 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
   },
   sideRail: {
-    width: 190,
     borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: '#cbd5e1',
     backgroundColor: '#f8fafc',
   },
+  sideRailExpanded: {
+    width: 160,
+  },
+  sideRailCollapsed: {
+    width: 56,
+  },
   sideRailContent: {
-    padding: 12,
-    gap: 16,
+    padding: 8,
+    gap: 12,
   },
   sideRailTitle: {
     color: '#0f172a',
@@ -328,8 +472,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   headerButtonActive: {
-    borderColor: '#2563eb',
-    backgroundColor: '#2563eb',
+    borderColor: '#059669',
+    backgroundColor: '#059669',
   },
   headerButtonText: {
     color: '#334155',
@@ -340,9 +484,16 @@ const styles = StyleSheet.create({
   headerButtonTextActive: {
     color: '#ffffff',
   },
+  giveUpButton: {
+    borderColor: '#dc2626',
+    backgroundColor: '#dc2626',
+  },
+  giveUpButtonText: {
+    color: '#ffffff',
+  },
   submitHeaderButton: {
-    borderColor: '#0f172a',
-    backgroundColor: '#0f172a',
+    borderColor: '#059669',
+    backgroundColor: '#059669',
   },
   submitHeaderButtonText: {
     color: '#ffffff',

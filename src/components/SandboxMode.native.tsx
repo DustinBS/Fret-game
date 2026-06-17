@@ -39,11 +39,16 @@ interface SandboxModeProps {
   keyConstraint?: string;
 }
 
-const SandboxMode: React.FC<SandboxModeProps> = ({
+interface SandboxModePropsInternal extends SandboxModeProps {
+  sidebarCollapsed?: boolean;
+}
+
+const SandboxMode: React.FC<SandboxModePropsInternal> = ({
   presetRequest,
   onOpenGallery,
   onOpenVisualArchetype,
   keyConstraint = 'C',
+  sidebarCollapsed,
 }) => {
   const {
     clickedFrets,
@@ -340,9 +345,10 @@ const SandboxMode: React.FC<SandboxModeProps> = ({
 
   return (
     <View style={styles.screen}>
-      <View style={styles.sideRail}>
-        <ScrollView contentContainerStyle={styles.sideRailContent} showsVerticalScrollIndicator={false}>
-          <Text style={styles.sideRailTitle}>Sandbox Menu</Text>
+      <View style={[styles.sideRail, sidebarCollapsed ? styles.sideRailCollapsed : styles.sideRailExpanded]}>
+        {!sidebarCollapsed ? (
+          <ScrollView contentContainerStyle={styles.sideRailContent} showsVerticalScrollIndicator={false}>
+            <Text style={styles.sideRailTitle}>Sandbox Menu</Text>
           <Pressable
             onPress={() => {
               setIsLibraryOpen(true);
@@ -380,7 +386,8 @@ const SandboxMode: React.FC<SandboxModeProps> = ({
               See Visual Archetype
             </Text>
           </Pressable>
-        </ScrollView>
+          </ScrollView>
+        ) : null}
       </View>
 
       <View style={styles.mainContent}>
@@ -584,14 +591,19 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
   },
   sideRail: {
-    width: 190,
     borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: '#cbd5e1',
     backgroundColor: '#f8fafc',
   },
+  sideRailExpanded: {
+    width: 160,
+  },
+  sideRailCollapsed: {
+    width: 56,
+  },
   sideRailContent: {
-    padding: 12,
-    gap: 16,
+    padding: 8,
+    gap: 12,
   },
   sideRailTitle: {
     color: '#0f172a',

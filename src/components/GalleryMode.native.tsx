@@ -257,8 +257,7 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
 
   return (
     <View style={styles.screen}>
-      {!sidebarCollapsed ? (
-        <View style={styles.actionHeader}>
+      <View style={styles.actionHeader}>
         <Pressable onPress={() => setIsChordListOpen(true)} style={styles.actionButton}>
           <Text style={styles.actionButtonText}>Chord List</Text>
         </Pressable>
@@ -280,7 +279,6 @@ const GalleryMode: React.FC<GalleryModeProps> = ({
           <Text style={styles.menuButtonText}>☰</Text>
         </Pressable>
       </View>
-      ) : null}
 
       <FlatList
         ref={scrollRef}

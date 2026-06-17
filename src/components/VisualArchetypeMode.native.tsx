@@ -99,7 +99,6 @@ interface VisualArchetypeModeProps {
     rootVoicing?: string;
     shapeIndex?: number;
   } | null;
-  sidebarCollapsed?: boolean;
 }
 
 const ROOT_FILTER_OPTIONS: RootStringFilter[] = ['ALL', 5, 4, 3, 2];
@@ -128,7 +127,6 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
   onChangeKeyConstraint,
   onOpenSandbox,
   scrollRequest,
-  sidebarCollapsed,
 }) => {
   const [rootStringFilter, setRootStringFilter] = useState<RootStringFilter>(() => {
     return parseRootStringFilter(readSessionString(VISUAL_ROOT_FILTER_KEY, 'ALL'));
@@ -293,7 +291,7 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
       queueMemberHighlightAfterScrollSettle(memberCellKey);
     }
     setPendingScrollTarget(null);
-  }, [pendingScrollTarget, selectedDiatonicByGroup, rootStringFilter]);
+  }, [pendingScrollTarget, selectedDiatonicByGroup, rootStringFilter, queueMemberHighlightAfterScrollSettle]);
 
   useEffect(() => {
     if (!highlightedMemberCellKey) {
@@ -331,8 +329,7 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
 
   return (
     <View style={styles.screen}>
-      {!sidebarCollapsed ? (
-        <View style={styles.actionHeader}>
+      <View style={styles.actionHeader}>
         <Pressable onPress={() => setIsChordListOpen(true)} style={styles.actionButton}>
           <Text style={styles.actionButtonText}>Chord List</Text>
         </Pressable>
@@ -355,8 +352,7 @@ const VisualArchetypeMode: React.FC<VisualArchetypeModeProps> = ({
             Roots: {rootStringFilter === 'ALL' ? 'All' : `Str ${rootStringFilter + 1}`}
           </Text>
         </Pressable>
-        </View>
-      ) : null}
+      </View>
 
       <ScrollView
         ref={scrollRef}

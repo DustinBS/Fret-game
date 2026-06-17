@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFretboardGame } from '../hooks/useFretboardGame';
 import { getNoteName } from '../utils/musicTheory';
 import SheetMusic from './SheetMusic';
 import { Fretboard, type FretMarker } from './Fretboard';
 import { SheetFretSplit } from './SheetFretSplit.native';
+import { HistoryModal, getCorrectMissHistoryTextStyle, useHistory } from './History.native';
 
 const SAFE_PALETTE = [
   { name: '1',  bg: 'bg-[#a6cee3]', text: 'text-[#a6cee3]', border: 'border-[#a6cee3]', hex: '#a6cee3' },
@@ -21,6 +22,10 @@ const SAFE_PALETTE = [
   { name: '7',  bg: 'bg-[#b15928]', text: 'text-[#b15928]', border: 'border-[#b15928]', hex: '#b15928' },
 ];
 
+interface TrainerHistoryState {
+  wasCorrect: boolean;
+}
+
 const FretboardGame = ({ sidebarCollapsed }: { sidebarCollapsed?: boolean }) => {
   const {
     targetNotes, colorIndices, roundUseFlats, noteCount, updateNoteCount,
@@ -29,6 +34,8 @@ const FretboardGame = ({ sidebarCollapsed }: { sidebarCollapsed?: boolean }) => 
     anchorFret, windowStart, windowEnd, clickedFrets, gameState,
     handleFretClick, submitGuess, clearGuesses, generateNewRound, TUNING,
   } = useFretboardGame(3);
+  const { history, addHistory, clearHistory } = useHistory<TrainerHistoryState>('fret-native-trainer-history');
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const currentRoundColors = targetNotes.map((_, idx) => {
     const colorIdx = colorIndices[idx % colorIndices.length];
@@ -101,10 +108,9 @@ const FretboardGame = ({ sidebarCollapsed }: { sidebarCollapsed?: boolean }) => 
 
   return (
     <View style={styles.screen}>
-      <View style={[styles.sideRail, sidebarCollapsed ? styles.sideRailCollapsed : styles.sideRailExpanded]}>
-        {!sidebarCollapsed ? (
-          <ScrollView contentContainerStyle={styles.sideRailContent} showsVerticalScrollIndicator={false}>
-            <Text style={styles.sideRailTitle}>Trainer Menu</Text>
+      <View style={[styles.sideRail, styles.sideRailExpanded]}>
+        <ScrollView contentContainerStyle={styles.sideRailContent} showsVerticalScrollIndicator={false}>
+          <Text style={styles.sideRailTitle}>Trainer Menu</Text>
           <View style={styles.noteCountRow}>
             <Text style={styles.settingLabel}>Note Count</Text>
             <View style={styles.counterWrap}>
@@ -129,13 +135,22 @@ const FretboardGame = ({ sidebarCollapsed }: { sidebarCollapsed?: boolean }) => 
           <Pressable onPress={clearGuesses} style={[styles.menuActionButton, styles.clearActionButton]}>
             <Text style={[styles.menuActionLabel, styles.clearActionLabel]}>Clear Guesses</Text>
           </Pressable>
-          </ScrollView>
-        ) : null}
+        </ScrollView>
       </View>
       <View style={styles.mainContent}>
         <View style={styles.tinyHeader}>
           <Pressable
-            onPress={gameState === 'GUESSING' ? submitGuess : generateNewRound}
+            onPress={() => {
+              if (gameState === 'GUESSING') {
+                const wasCorrect = submitGuess();
+                addHistory(`${wasCorrect ? 'Correct' : 'Miss'} · ${gameMode} · ${accidentalMode} · ${noteCount} notes`, {
+                  wasCorrect,
+                });
+                return;
+              }
+
+              generateNewRound();
+            }}
             style={[styles.headerButton, styles.primaryHeaderButton]}
           >
             <Text style={[styles.headerButtonText, styles.primaryHeaderButtonText]}>
@@ -148,7 +163,7 @@ const FretboardGame = ({ sidebarCollapsed }: { sidebarCollapsed?: boolean }) => 
           >
             <Text style={[styles.headerButtonText, isSheetMode ? styles.sheetButtonActiveText : null]}>Sheet Music</Text>
           </Pressable>
-          <Pressable onPress={() => console.log('History Placeholder')} style={[styles.headerButton, styles.menuButton]}>
+          <Pressable onPress={() => setIsHistoryOpen(true)} style={[styles.headerButton, styles.historyButton]}>
             <Text style={styles.menuButtonText}>History</Text>
           </Pressable>
         </View>
@@ -196,6 +211,14 @@ const FretboardGame = ({ sidebarCollapsed }: { sidebarCollapsed?: boolean }) => 
           />
         </View>
       </View>
+
+      <HistoryModal
+        visible={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        history={history}
+        onClear={clearHistory}
+        getLabelStyle={getCorrectMissHistoryTextStyle}
+      />
     </View>
   );
 };
@@ -300,6 +323,11 @@ const styles = StyleSheet.create({
     color: '#1e293b',
     fontSize: 14,
     fontWeight: '900',
+  },
+  historyButton: {
+    marginLeft: 'auto',
+    minWidth: 72,
+    alignItems: 'center',
   },
   body: {
     flex: 1,

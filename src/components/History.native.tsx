@@ -119,7 +119,13 @@ export const HistoryPanel = <T,>({ history, onClear, onRestore, renderLabel, get
 
 export const HistoryModal = <T,>({ visible, onClose, history, onClear, onRestore, renderLabel, getLabelStyle }: HistoryModalProps<T>) => {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal 
+      visible={visible} 
+      transparent 
+      animationType="fade" 
+      onRequestClose={onClose}
+      presentationStyle="overFullScreen"
+    >
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
           <View style={styles.headerRow}>

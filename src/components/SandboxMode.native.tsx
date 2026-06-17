@@ -23,6 +23,7 @@ import {
   NATIVE_SCROLL_IDLE_HIGHLIGHT_MS,
   NAVIGATION_FOCUS_HIGHLIGHT_HOLD_MS,
 } from '../utils/navigationFeedback';
+import { HistoryModal, useHistory } from './History.native';
 
 const SANDBOX_SEARCH_KEY = 'fret-sandbox-search-native';
 
@@ -62,9 +63,11 @@ const SandboxMode: React.FC<SandboxModePropsInternal> = ({
     oneNotePerString,
     setOneNotePerString,
   } = useSandbox();
+  const { history, addHistory, clearHistory } = useHistory('fret-native-sandbox-history');
 
   const [search, setSearch] = useState(() => readSessionString(SANDBOX_SEARCH_KEY, ''));
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   
   const [pendingLibraryFocus, setPendingLibraryFocus] = useState<{
     chordId?: string;
@@ -316,6 +319,8 @@ const SandboxMode: React.FC<SandboxModePropsInternal> = ({
       return;
     }
 
+    addHistory(`Gallery · ${detectedChordNavigationTarget.galleryTarget.quality}`);
+
     onOpenGallery({
       quality: detectedChordNavigationTarget.galleryTarget.quality,
       chordId: detectedChordNavigationTarget.galleryTarget.chordId,
@@ -334,6 +339,8 @@ const SandboxMode: React.FC<SandboxModePropsInternal> = ({
       return;
     }
 
+    addHistory(`Visual Archetype · ${detectedChordNavigationTarget.visualArchetypeTarget.quality}`);
+
     onOpenVisualArchetype({
       quality: detectedChordNavigationTarget.visualArchetypeTarget.quality,
       chordId: detectedChordNavigationTarget.visualArchetypeTarget.chordId,
@@ -345,12 +352,12 @@ const SandboxMode: React.FC<SandboxModePropsInternal> = ({
 
   return (
     <View style={styles.screen}>
-      <View style={[styles.sideRail, sidebarCollapsed ? styles.sideRailCollapsed : styles.sideRailExpanded]}>
-        {!sidebarCollapsed ? (
-          <ScrollView contentContainerStyle={styles.sideRailContent} showsVerticalScrollIndicator={false}>
-            <Text style={styles.sideRailTitle}>Sandbox Menu</Text>
+      <View style={[styles.sideRail, styles.sideRailExpanded]}>
+        <ScrollView contentContainerStyle={styles.sideRailContent} showsVerticalScrollIndicator={false}>
+          <Text style={styles.sideRailTitle}>Sandbox Menu</Text>
           <Pressable
             onPress={() => {
+              addHistory('Open Chord Library');
               setIsLibraryOpen(true);
             }}
             style={styles.menuAction}
@@ -363,7 +370,13 @@ const SandboxMode: React.FC<SandboxModePropsInternal> = ({
             <Switch value={oneNotePerString} onValueChange={setOneNotePerString} />
           </View>
 
-          <Pressable onPress={clearSelection} style={styles.menuAction}>
+          <Pressable
+            onPress={() => {
+              addHistory('Clear Selection');
+              clearSelection();
+            }}
+            style={styles.menuAction}
+          >
             <Text style={styles.menuActionText}>Clear Selection</Text>
           </Pressable>
 
@@ -386,8 +399,7 @@ const SandboxMode: React.FC<SandboxModePropsInternal> = ({
               See Visual Archetype
             </Text>
           </Pressable>
-          </ScrollView>
-        ) : null}
+        </ScrollView>
       </View>
 
       <View style={styles.mainContent}>
@@ -412,7 +424,7 @@ const SandboxMode: React.FC<SandboxModePropsInternal> = ({
             )}
           </ScrollView>
 
-          <Pressable onPress={() => console.log('History Placeholder')} style={styles.menuButton}>
+          <Pressable onPress={() => setIsHistoryOpen(true)} style={[styles.menuButton, styles.historyButton]}> 
             <Text style={styles.menuButtonText}>History</Text>
           </Pressable>
         </View>
@@ -557,6 +569,7 @@ const SandboxMode: React.FC<SandboxModePropsInternal> = ({
                                     : null,
                                 ]}
                                 onPress={() => {
+                                  addHistory(`Library · ${definition.quality} · Str ${rootString + 1} · ${option.rootVoicing}`);
                                   const pinnedRootFret = resolveRootFretForShape(keyPitchClass, option.shape);
                                   setChordShape(definition, option.shape, pinnedRootFret);
                                   setIsLibraryOpen(false);
@@ -576,6 +589,13 @@ const SandboxMode: React.FC<SandboxModePropsInternal> = ({
           </View>
         </View>
       </Modal>
+
+      <HistoryModal
+        visible={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        history={history}
+        onClear={clearHistory}
+      />
     </View>
   );
 };

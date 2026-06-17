@@ -135,18 +135,23 @@ const ChordQuizMode: React.FC<{ sidebarCollapsed?: boolean }> = ({ sidebarCollap
   };
 
   const handleRestoreHistory = (state: QuizHistoryState) => {
-    const normalizedQuizData = {
-      ...state.quizData,
+    setQuizData({
+      rootPitchClass: state.quizData.rootPitchClass,
+      quality: state.quizData.quality,
+      rootVoicing: state.quizData.rootVoicing,
       shape: {
-        ...state.quizData.shape,
+        rootString: state.quizData.shape.rootString,
         offsets: state.quizData.shape.offsets.map((off) => ({
-          ...off,
+          string: off.string,
+          offset: off.offset,
           interval: off.interval ?? '1',
         })),
       },
-    };
-
-    setQuizData(normalizedQuizData as any);
+      rootString: state.quizData.rootString,
+      rootFret: state.quizData.rootFret,
+      activePitches: state.quizData.activePitches,
+      useFlats: state.quizData.useFlats,
+    });
     setGameState(state.gameState);
     setStreak(Number.isFinite(state.streak) && state.streak >= 0 ? state.streak : 0);
     setInputRoot(state.inputRoot);
@@ -348,11 +353,9 @@ const ChordQuizMode: React.FC<{ sidebarCollapsed?: boolean }> = ({ sidebarCollap
             </Text>
           </Pressable>
 
-          {!sidebarCollapsed ? (
-            <Pressable onPress={() => setIsHistoryOpen(true)} style={styles.menuButton}>
-              <Text style={styles.menuButtonText}>History</Text>
-            </Pressable>
-          ) : null}
+          <Pressable onPress={() => setIsHistoryOpen(true)} style={styles.menuButton}>
+            <Text style={styles.menuButtonText}>History</Text>
+          </Pressable>
 
           <Pressable
             onPress={handleSubmit}
